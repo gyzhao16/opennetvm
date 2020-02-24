@@ -948,6 +948,46 @@ onvm_nflib_dequeue_packets(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, 
         return 0;
 }
 
+static inline uint16_t
+onvm_nflib_dequeue_packets_bulk(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, nf_pkt_handler_bulk_fn  handler) {
+        struct onvm_nf *nf;
+        struct onvm_pkt_meta *meta;
+        uint16_t i, nb_pkts;
+        struct packet_buf tx_buf;
+        int ret_act;
+
+        nf = nf_local_ctx->nf;
+
+        // TODO: dummy assertion
+        RTE_ASSERT(PACKET_READ_SIZE <= sizeof(int) * 8);
+        /* Dequeue all packets in ring up to max possible. */
+        nb_pkts = rte_ring_dequeue_burst(nf->rx_q, pkts, PACKET_READ_SIZE, NULL);
+
+        if (unlikely(nb_pkts == 0)) {
+                return 0;
+        }
+
+        tx_buf.count = 0;
+        /* Give packets to the user bulk proccessing function */
+        ret_act = (*handler)((struct rte_mbuf **)pkts, nb_pkts, nf_local_ctx);
+
+        for (i = 0; i < nb_pkts; i++) {
+                /* NF returns 0 to return packets or 1 to buffer */
+                if (likely(ret_act & (1 << i) == 0)) {
+                        tx_buf.buffer[tx_buf.count++] = pkts[i];
+                } else {
+                        nf->stats.tx_buffer++;
+                }
+        }
+
+        if (ONVM_NF_HANDLE_TX) {
+                return nb_pkts;
+        }
+
+        onvm_pkt_enqueue_tx_thread(&tx_buf, nf);
+        return 0;
+}
+
 static inline void
 onvm_nflib_dequeue_messages(struct onvm_nf_local_ctx *nf_local_ctx) {
         struct onvm_nf_msg *msg;

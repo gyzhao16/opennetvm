@@ -220,6 +220,9 @@ struct onvm_nf;
 /* Function prototype for NF packet handlers */
 typedef int (*nf_pkt_handler_fn)(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                                  __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx);
+/* Function prototype for NF packet handlers for bulk processing */
+typedef int (*nf_pkt_handler_bulk_fn)(struct rte_mbuf **pkt, uint16_t nb_pkts, // pkt_handler retrieves the meta manually
+                                 __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx);
 /* Function prototype for NF the callback */
 typedef int (*nf_user_actions_fn)(__attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx);
 /* Function prototype for NFs that want extra initalization/setup before running */
@@ -235,6 +238,7 @@ struct onvm_nf_function_table {
         nf_msg_handler_fn  msg_handler;
         nf_user_actions_fn user_actions;
         nf_pkt_handler_fn  pkt_handler;
+        nf_pkt_handler_bulk_fn  pkt_bulk_handler;
 };
 
 /* Information needed to initialize a new NF child thread */
