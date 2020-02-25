@@ -247,6 +247,62 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         return 0;
 }
 
+/*
+static int
+packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
+               __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+        // TODO: To be hand optimized
+        struct ipv4_hdr *ipv4_hdr;
+        static uint32_t counter = 0;
+        int ret;
+        uint32_t rule = 0;
+        uint32_t track_ip = 0;
+        char ip_string[16];
+
+        if (++counter == print_delay) {
+                do_stats_display();
+                counter = 0;
+        }
+
+        stats.pkt_total += nb_pkts;
+
+        if (!onvm_pkt_is_ipv4(pkt)) {
+                if (debug) RTE_LOG(INFO, APP, "Packet received not ipv4\n");
+                stats.pkt_not_ipv4++;
+                meta->action = ONVM_NF_ACTION_DROP;
+                return 0;
+        }
+
+        ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
+        ret = rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), &rule);
+
+        if (debug) onvm_pkt_parse_char_ip(ip_string, rte_be_to_cpu_32(ipv4_hdr->src_addr));
+
+        if (ret < 0) {
+                meta->action = ONVM_NF_ACTION_DROP;
+                stats.pkt_drop++;
+                if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
+                return 0;
+        }
+
+        switch (rule) {
+                case 0:
+                        meta->action = ONVM_NF_ACTION_TONF;
+                        meta->destination = destination;
+                        stats.pkt_accept++;
+                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been accepted\n", ip_string);
+                        break;
+                default:
+                        meta->action = ONVM_NF_ACTION_DROP;
+                        stats.pkt_drop++;
+                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
+                        break;
+        }
+
+        return 0;
+}
+*/
+
 static int
 lpm_setup(struct onvm_fw_rule **rules, int num_rules) {
         int i, status, ret;
@@ -367,6 +423,7 @@ int main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
