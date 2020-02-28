@@ -247,7 +247,6 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         return 0;
 }
 
-/*
 static int
 packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
@@ -255,9 +254,11 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
         struct ipv4_hdr *ipv4_hdr;
         static uint32_t counter = 0;
         int ret;
-        uint32_t rule = 0;
+        uint32_t rules[BATCH_SIZE];
         uint32_t track_ip = 0;
         char ip_string[16];
+        int i = 0;
+        struct onvm_pkt_meta *meta;
 
         if (++counter == print_delay) {
                 do_stats_display();
@@ -266,26 +267,29 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
 
         stats.pkt_total += nb_pkts;
 
-        if (!onvm_pkt_is_ipv4(pkt)) {
-                if (debug) RTE_LOG(INFO, APP, "Packet received not ipv4\n");
-                stats.pkt_not_ipv4++;
-                meta->action = ONVM_NF_ACTION_DROP;
-                return 0;
-        }
+        // // We assert all packets are ipv4 and don't drop
+        // if (!onvm_pkt_is_ipv4(pkt)) {
+        //         if (debug) RTE_LOG(INFO, APP, "Packet received not ipv4\n");
+        //         stats.pkt_not_ipv4++;
+        //         meta->action = ONVM_NF_ACTION_DROP;
+        //         return 0;
+        // }
 
         ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
-        ret = rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), &rule);
+        rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), rules);
 
-        if (debug) onvm_pkt_parse_char_ip(ip_string, rte_be_to_cpu_32(ipv4_hdr->src_addr));
+        for (int i = 0; i < nb_pkts; i++) {
+                // TODO: include rte headers
+                ret = (rules[i] & RTE_LPM_LOOKUP_SUCCESS) ? 0 : -ENOENT;
+                meta = onvm_get_pkt_meta((struct rte_mbuf *)pkts[i]);
+                if (ret < 0) {
+                        meta->action = ONVM_NF_ACTION_DROP;
+                        stats.pkt_drop++;
+                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
+                        return 0;
+                }
 
-        if (ret < 0) {
-                meta->action = ONVM_NF_ACTION_DROP;
-                stats.pkt_drop++;
-                if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
-                return 0;
-        }
-
-        switch (rule) {
+                switch (rule) {
                 case 0:
                         meta->action = ONVM_NF_ACTION_TONF;
                         meta->destination = destination;
@@ -297,11 +301,10 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
                         stats.pkt_drop++;
                         if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
                         break;
+                }
         }
-
         return 0;
 }
-*/
 
 static int
 lpm_setup(struct onvm_fw_rule **rules, int num_rules) {
