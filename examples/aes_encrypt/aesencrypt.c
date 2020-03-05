@@ -57,6 +57,7 @@
 #include <rte_udp.h>
 
 #include "aes.h"
+#include "aesni.h"
 #include "hmac.h"
 #include "sha.h"
 #include "onvm_nflib.h"
@@ -215,7 +216,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         return 0;
 }
 
-int packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
+static int
+packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
                                  __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
                 static uint32_t counter = 0;
         struct udp_hdr *udp;
@@ -224,8 +226,9 @@ int packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
         size_t hmac_len = 0;
         int i = 0;
 
-        if (++counter == print_delay) {
-                do_stats_display(pkt);
+        counter += nb_pkts;
+        if (counter == print_delay) {
+                do_stats_display(pkt[0]);
                 counter = 0;
         }
         for (i = 0; i < nb_pkts; i++) {

@@ -256,6 +256,7 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
         int ret;
         uint32_t rules[BATCH_SIZE];
         uint32_t track_ip = 0;
+        uint32_t rule = 0;
         char ip_string[16];
         int i = 0;
         struct onvm_pkt_meta *meta;
@@ -275,11 +276,11 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
         //         return 0;
         // }
 
-        ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
-        rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), rules);
+
 
         for (int i = 0; i < nb_pkts; i++) {
-                // TODO: include rte headers
+                ipv4_hdr = onvm_pkt_ipv4_hdr(pkts[i]);
+                rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), rules);
                 ret = (rules[i] & RTE_LPM_LOOKUP_SUCCESS) ? 0 : -ENOENT;
                 meta = onvm_get_pkt_meta((struct rte_mbuf *)pkts[i]);
                 if (ret < 0) {

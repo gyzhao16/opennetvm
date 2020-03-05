@@ -294,9 +294,9 @@ void SHA1_Final(uint8_t digest[SHA1_DIGEST_SIZE], SHA1_CTX *context) {
         finalcount[i] = (uint8_t) ((context->count[(i >= 4 ? 0 : 1)]
                 >> ((3 - (i & 3)) * 8)) & 255);
     }
-    SHA1_Update(context, (uint8_t *) "\200", 1);
+    SHA1_Update(context, (const uint8_t *) "\200", 1);
     while ((context->count[0] & 504) != 448) {
-        SHA1_Update(context, (uint8_t *) "\0", 1);
+        SHA1_Update(context, (const uint8_t *) "\0", 1);
     }
     SHA1_Update(context, finalcount, 8); /* Should cause SHA1_Transform */
     for (i = 0; i < SHA1_DIGEST_SIZE; i++) {
