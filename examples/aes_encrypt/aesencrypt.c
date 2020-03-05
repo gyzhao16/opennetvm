@@ -57,6 +57,8 @@
 #include <rte_udp.h>
 
 #include "aes.h"
+#include "hmac.h"
+#include "sha.h"
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
@@ -173,8 +175,10 @@ static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
         struct udp_hdr *udp;
-
+        uint8_t hmac_out[SHA1_DIGEST_SIZE];
+        size_t hmac_len = 0;
         static uint32_t counter = 0;
+
         if (++counter == print_delay) {
                 do_stats_display(pkt);
                 counter = 0;
@@ -199,6 +203,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                 /* IV should change with every packet, but we don't have any
                  * way to send it to the other side. */
                 aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 256, iv[0]);
+                hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
                 if (counter == 0) {
                         printf("Encrypted %d bytes at offset %d (%ld)\n", plen, hlen,
                                sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
@@ -215,6 +220,8 @@ int packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
                 static uint32_t counter = 0;
         struct udp_hdr *udp;
         struct onvm_pkt_meta *meta;
+        uint8_t hmac_out[SHA1_DIGEST_SIZE];
+        size_t hmac_len = 0;
         int i = 0;
 
         if (++counter == print_delay) {
@@ -242,6 +249,7 @@ int packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
                 /* IV should change with every packet, but we don't have any
                  * way to send it to the other side. */
                         aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 256, iv[0]);
+                        hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
                         if (counter == 0) {
                                 printf("Encrypted %d bytes at offset %d (%ld)\n", plen, hlen,
                                        sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
