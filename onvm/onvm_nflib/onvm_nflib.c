@@ -951,7 +951,6 @@ onvm_nflib_dequeue_packets(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, 
 static inline uint16_t
 onvm_nflib_dequeue_packets_bulk(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, nf_pkt_handler_bulk_fn  handler) {
         struct onvm_nf *nf;
-        struct onvm_pkt_meta *meta;
         uint16_t i, nb_pkts;
         struct packet_buf tx_buf;
         int ret_act;
@@ -973,7 +972,7 @@ onvm_nflib_dequeue_packets_bulk(void **pkts, struct onvm_nf_local_ctx *nf_local_
 
         for (i = 0; i < nb_pkts; i++) {
                 /* NF returns 0 to return packets or 1 to buffer */
-                if (likely(ret_act & (1 << i) == 0)) {
+                if (likely((ret_act & (1 << i)) == 0)) {
                         tx_buf.buffer[tx_buf.count++] = pkts[i];
                 } else {
                         nf->stats.tx_buffer++;
