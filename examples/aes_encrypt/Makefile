@@ -48,7 +48,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = aes_encrypt
 
 # all source are stored in SRCS-y
-SRCS-y := aesencrypt.c aes.c
+SRCS-y := aesencrypt.c aes.c sha.c hmac_sha1.c
 
 # OpenNetVM path
 ONVM= $(SRCDIR)/../../onvm
