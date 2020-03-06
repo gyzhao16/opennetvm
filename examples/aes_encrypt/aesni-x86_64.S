@@ -1,6 +1,3 @@
-.hidden	OPENSSL_ia32cap_P
-.comm	OPENSSL_ia32cap_P,16,4
-
 .text	
 
 .globl	aesni_encrypt
