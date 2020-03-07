@@ -149,6 +149,12 @@ static inline uint16_t
 onvm_nflib_dequeue_packets(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx,
                            nf_pkt_handler_fn handler) __attribute__((always_inline));
 
+
+static inline uint16_t
+onvm_nflib_dequeue_packets_bulk(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx,
+                           nf_pkt_handler_bulk_fn handler) __attribute__((always_inline));
+
+
 /*
  * Check if there is a message available for this NF and process it
  */
@@ -564,7 +570,8 @@ onvm_nflib_thread_main_loop(void *arg) {
                 }
 
                 nb_pkts_added =
-                        onvm_nflib_dequeue_packets((void **)pkts, nf_local_ctx, nf->function_table->pkt_handler);
+                        // onvm_nflib_dequeue_packets((void **)pkts, nf_local_ctx, nf->function_table->pkt_handler);
+                        onvm_nflib_dequeue_packets_bulk((void **)pkts, nf_local_ctx, nf->function_table->pkt_bulk_handler);
 
                 if (likely(nb_pkts_added > 0)) {
                         onvm_pkt_process_tx_batch(nf->nf_tx_mgr, pkts, nb_pkts_added, nf);
@@ -949,7 +956,7 @@ onvm_nflib_dequeue_packets(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, 
 }
 
 static inline uint16_t
-onvm_nflib_dequeue_packets_bulk(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, nf_pkt_handler_bulk_fn  handler) {
+onvm_nflib_dequeue_packets_bulk(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, nf_pkt_handler_bulk_fn handler) {
         struct onvm_nf *nf;
         uint16_t i, nb_pkts;
         struct packet_buf tx_buf;

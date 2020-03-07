@@ -268,17 +268,15 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
 
         stats.pkt_total += nb_pkts;
 
-        // // We assert all packets are ipv4 and don't drop
-        // if (!onvm_pkt_is_ipv4(pkt)) {
-        //         if (debug) RTE_LOG(INFO, APP, "Packet received not ipv4\n");
-        //         stats.pkt_not_ipv4++;
-        //         meta->action = ONVM_NF_ACTION_DROP;
-        //         return 0;
-        // }
-
-
-
         for (int i = 0; i < nb_pkts; i++) {
+                if (!onvm_pkt_is_ipv4(pkts[i])) {
+                        if (debug) RTE_LOG(INFO, APP, "Packet received not ipv4\n");
+                        stats.pkt_not_ipv4++;
+                        meta = onvm_get_pkt_meta(pkts[i]);
+                        meta->action = ONVM_NF_ACTION_DROP;
+                        continue;
+                }
+
                 ipv4_hdr = onvm_pkt_ipv4_hdr(pkts[i]);
                 rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), rules);
                 ret = (rules[i] & RTE_LPM_LOOKUP_SUCCESS) ? 0 : -ENOENT;
@@ -427,7 +425,7 @@ int main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
-        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
