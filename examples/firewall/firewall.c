@@ -64,6 +64,8 @@
 #include "onvm_pkt_helper.h"
 #include "onvm_config_common.h"
 
+#include "construct_rules.h"
+
 #define NF_TAG "firewall"
 
 #define MAX_RULES 256
@@ -198,6 +200,7 @@ static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
         struct ipv4_hdr *ipv4_hdr;
+        uint16_t src_port, dst_port;
         static uint32_t counter = 0;
         int ret;
         uint32_t rule = 0;
@@ -219,7 +222,23 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         }
 
         ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
-        ret = rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), &rule);
+        if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
+                struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
+                src_port = tcp->src_port;
+                dst_port = tcp->dst_port;
+        } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
+                struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
+                src_port = udp->src_port;
+                dst_port = udp->dst_port;
+        } else {
+                // protocol unknown, return 0;
+                return 0;
+        }
+        rule = firewall_5tuple_handler(ipv4_hdr->src_addr, ipv4_hdr->dst_addr, 
+                                        ipv4_hdr->next_proto_id, 
+                                        src_port, dst_port);
+        
+        // ret = rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), &rule);
 
         if (debug) onvm_pkt_parse_char_ip(ip_string, rte_be_to_cpu_32(ipv4_hdr->src_addr));
 
@@ -368,6 +387,12 @@ lpm_teardown(struct onvm_fw_rule **rules, int num_rules) {
         }
 }
 
+void
+setup_rules_5tuple() {
+        struct fwRule *rules = (struct fwRule *)malloc(RULESIZE * sizeof(struct fwRule));
+        construct_rules(rules);
+}
+
 struct onvm_fw_rule
 **setup_rules(int *total_rules, char *rules_file) {
         int ip[4];
@@ -446,6 +471,7 @@ int main(int argc, char *argv[]) {
         }
 
         rules = setup_rules(&num_rules, rule_file);
+        setup_rules_5tuple();
         lpm_setup(rules, num_rules);
         onvm_nflib_run(nf_local_ctx);
 
