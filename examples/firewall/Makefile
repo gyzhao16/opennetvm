@@ -47,7 +47,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = firewall
 
 # all source are stored in SRCS-y
-SRCS-y := firewall.c
+SRCS-y := firewall.c firewall_rules.c firewall_process.c
 
 # OpenNetVM path
 ONVM= $(SRCDIR)/../../onvm

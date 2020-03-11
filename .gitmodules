@@ -1,6 +1,6 @@
 [submodule "dpdk-1.8.0"]
         path = dpdk
-        url = https://dpdk.org/git/dpdk
+        url = https://github.com/ZZCer/dpdk.git
         branch = master
         commit = 0da7f445df445630c794897347ee360d6fe6348b
 [submodule "tools/Pktgen/pktgen-dpdk"]

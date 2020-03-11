@@ -64,6 +64,8 @@
 #include "onvm_pkt_helper.h"
 #include "onvm_config_common.h"
 
+#include "construct_rules.h"
+
 #define NF_TAG "firewall"
 
 #define MAX_RULES 256
@@ -198,6 +200,7 @@ static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
         struct ipv4_hdr *ipv4_hdr;
+        uint16_t src_port, dst_port;
         static uint32_t counter = 0;
         int ret;
         uint32_t rule = 0;
@@ -219,7 +222,23 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         }
 
         ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
-        ret = rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), &rule);
+        if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
+                struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
+                src_port = tcp->src_port;
+                dst_port = tcp->dst_port;
+        } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
+                struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
+                src_port = udp->src_port;
+                dst_port = udp->dst_port;
+        } else {
+                // protocol unknown, return 0;
+                return 0;
+        }
+        rule = firewall_5tuple_handler(ipv4_hdr->src_addr, ipv4_hdr->dst_addr, 
+                                        ipv4_hdr->next_proto_id, 
+                                        src_port, dst_port);
+        
+        // ret = rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), &rule);
 
         if (debug) onvm_pkt_parse_char_ip(ip_string, rte_be_to_cpu_32(ipv4_hdr->src_addr));
 
@@ -244,6 +263,64 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                         break;
         }
 
+        return 0;
+}
+
+static int
+packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
+               __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+        // TODO: To be hand optimized
+        struct ipv4_hdr *ipv4_hdr;
+        static uint32_t counter = 0;
+        int ret;
+        uint32_t rules[BATCH_SIZE];
+        uint32_t track_ip = 0;
+        uint32_t rule = 0;
+        char ip_string[16];
+        int i = 0;
+        struct onvm_pkt_meta *meta;
+
+        if (++counter == print_delay) {
+                do_stats_display();
+                counter = 0;
+        }
+
+        stats.pkt_total += nb_pkts;
+
+        for (int i = 0; i < nb_pkts; i++) {
+                if (!onvm_pkt_is_ipv4(pkts[i])) {
+                        if (debug) RTE_LOG(INFO, APP, "Packet received not ipv4\n");
+                        stats.pkt_not_ipv4++;
+                        meta = onvm_get_pkt_meta(pkts[i]);
+                        meta->action = ONVM_NF_ACTION_DROP;
+                        continue;
+                }
+
+                ipv4_hdr = onvm_pkt_ipv4_hdr(pkts[i]);
+                rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), rules);
+                ret = (rules[i] & RTE_LPM_LOOKUP_SUCCESS) ? 0 : -ENOENT;
+                meta = onvm_get_pkt_meta((struct rte_mbuf *)pkts[i]);
+                if (ret < 0) {
+                        meta->action = ONVM_NF_ACTION_DROP;
+                        stats.pkt_drop++;
+                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
+                        return 0;
+                }
+
+                switch (rule) {
+                case 0:
+                        meta->action = ONVM_NF_ACTION_TONF;
+                        meta->destination = destination;
+                        stats.pkt_accept++;
+                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been accepted\n", ip_string);
+                        break;
+                default:
+                        meta->action = ONVM_NF_ACTION_DROP;
+                        stats.pkt_drop++;
+                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
+                        break;
+                }
+        }
         return 0;
 }
 
@@ -310,6 +387,12 @@ lpm_teardown(struct onvm_fw_rule **rules, int num_rules) {
         }
 }
 
+void
+setup_rules_5tuple() {
+        struct fwRule *rules = (struct fwRule *)malloc(RULESIZE * sizeof(struct fwRule));
+        construct_rules(rules);
+}
+
 struct onvm_fw_rule
 **setup_rules(int *total_rules, char *rules_file) {
         int ip[4];
@@ -367,6 +450,7 @@ int main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
@@ -387,6 +471,7 @@ int main(int argc, char *argv[]) {
         }
 
         rules = setup_rules(&num_rules, rule_file);
+        setup_rules_5tuple();
         lpm_setup(rules, num_rules);
         onvm_nflib_run(nf_local_ctx);
 
