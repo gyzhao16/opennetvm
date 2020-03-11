@@ -56,6 +56,11 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
+//add aho-corasick
+#include "../aho-corasick/handopt.c"
+
+
+
 #define NF_TAG "simple_forward"
 
 /* number of package between each print */
@@ -157,6 +162,31 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         if (++counter == print_delay) {
                 do_stats_display(pkt);
                 counter = 0;
+        }
+
+        //check udp packet
+        struct udp_hdr *udp;
+        udp = onvm_pkt_udp_hdr(pkt);
+        if (udp != NULL) {
+            uint8_t *pkt_data;
+            uint8_t *eth;
+            uint16_t plen;
+            uint16_t hlen;
+
+            //get at the payload
+            pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
+            //calculate length
+            eth = rte_pktmbuf_mtod(pkt, uint8_t *);
+            hlen = pkt_data - eth;
+            plen = pkt->pkt_len - hlen;
+
+            //aho-corasick
+            struct aho_pkt pkts;
+            pkts.pkt_id = 0;
+            pkts.dfa_id = 0;
+            pkts.len = plen;
+            pkts.content = pkt_data;
+            aho_packet_handler(&pkts);
         }
 
         meta->action = ONVM_NF_ACTION_TONF;
