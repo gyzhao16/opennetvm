@@ -158,6 +158,37 @@ do_stats_display(struct rte_mbuf *pkt) {
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+        
+        //initialize DFAs during 1st invocation
+        
+        // static int dfa_init_flag = 0;
+        // static int num_patterns, i;
+        // static struct aho_pattern *patterns;
+        // static struct aho_dfa dfa_arr[AHO_MAX_DFA];
+
+        // if (dfa_init_flag == 0) {
+        //     dfa_init_flag ++;
+        //     for(i = 0; i < AHO_MAX_DFA; i++) {
+        //         printf("Initializing DFA %d\n", i);
+        //         aho_init(&dfa_arr[i], i);
+        //     }
+            
+        //     printf("Adding patterns to DFAs\n");
+        //     patterns = aho_get_patterns(AHO_PATTERN_FILE, 
+        //         &num_patterns);
+            
+        //     for(i = 0; i < num_patterns; i++) {
+        //         int dfa_id = patterns[i].dfa_id;
+        //         aho_add_pattern(&dfa_arr[dfa_id], &patterns[i], i);
+        //     }
+            
+        //     printf("Building AC failure function\n");
+        //     for(i = 0; i < AHO_MAX_DFA; i++) {
+        //         aho_build_ff(&dfa_arr[i]);
+        //         aho_preprocess_dfa(&dfa_arr[i]);
+        //     }
+        // }
+
         static uint32_t counter = 0;
         if (++counter == print_delay) {
                 do_stats_display(pkt);
@@ -196,6 +227,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
 
 int
 main(int argc, char *argv[]) {
+    
+        //original main function
         struct onvm_nf_local_ctx *nf_local_ctx;
         struct onvm_nf_function_table *nf_function_table;
         int arg_offset;
