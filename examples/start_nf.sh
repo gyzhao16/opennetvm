@@ -80,3 +80,4 @@ elif [[ $dash_dash_cnt -eq 1 ]]; then
 fi
 
 exec sudo $BINARY $DPDK_ARGS -- $ONVM_ARGS -- "$@"
+exec sudo gdb --args $BINARY $DPDK_ARGS -- $ONVM_ARGS -- "$@"

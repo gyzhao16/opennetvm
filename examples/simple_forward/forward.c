@@ -62,7 +62,7 @@
 #include "fpp.h"
 #include "handopt.h"
 
-#define NF_TAG "simple_forward"
+#define NF_TAG "nids"
 
 /* number of package between each print */
 static uint32_t print_delay = 100000000;
@@ -156,54 +156,60 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
-static int 
-packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts, 
-                    __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-    static uint32_t counter = 0;
-    int i = 0;
-    struct onvm_pkt_meta *meta;
-    printf("this is bulk function\n");
-    counter += nb_pkts;
-    if (counter >= 10000000) {
-        do_stats_display(pkts[i]);
-        counter = 0;
-    }
-
-    struct aho_pkt *aho_pkts;
-    aho_pkts = (struct aho_pkt *) malloc(nb_pkts * 
-        sizeof(struct aho_pkt));
+// static int 
+// packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts, 
+//                     __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+//     static uint32_t counter = 0;
+//     static uint32_t func_counter = 0;
+//     func_counter ++;
+//     if (func_counter >= 10) {
+//         printf("%d\n", func_counter);
+//         func_counter = 0;
+//     }
+//     int i = 0;
+//     struct onvm_pkt_meta *meta;
+//     // printf("this is bulk function\n");
+//     counter += nb_pkts;
+//     if (counter >= 10000000) {
+//         do_stats_display(pkts[i]);
+//         counter = 0;
+//     }
+//     // printf("%d\n", nb_pkts);
+//     struct aho_pkt *aho_pkts;
+//     aho_pkts = (struct aho_pkt *) malloc(nb_pkts * 
+//         sizeof(struct aho_pkt));
     
-    for (i = 0; i < nb_pkts; i++) {
-        struct udp_hdr *udp;
-        udp = onvm_pkt_udp_hdr(pkts[i]);
-        if (udp != NULL) {
-            uint8_t *pkt_data;
-            uint8_t *eth;
-            uint16_t plen;
-            uint16_t hlen;
+//     for (i = 0; i < nb_pkts; i++) {
+//         struct udp_hdr *udp;
+//         udp = onvm_pkt_udp_hdr(pkts[i]);
+//         if (udp != NULL) {
+//             uint8_t *pkt_data;
+//             uint8_t *eth;
+//             uint16_t plen;
+//             uint16_t hlen;
 
-            //get at the payload
-            pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
-            //calculate length
-            eth = rte_pktmbuf_mtod(pkts[i], uint8_t *);
-            hlen = pkt_data - eth;
-            plen = pkts[i]->pkt_len - hlen;
+//             //get at the payload
+//             pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
+//             //calculate length
+//             eth = rte_pktmbuf_mtod(pkts[i], uint8_t *);
+//             hlen = pkt_data - eth;
+//             plen = pkts[i]->pkt_len - hlen;
 
-            aho_pkts[i].pkt_id = i;
-            aho_pkts[i].dfa_id = 0;
-            aho_pkts[i].len = plen;
-            aho_pkts[i].content = pkt_data;
-        }
+//             aho_pkts[i].pkt_id = i;
+//             aho_pkts[i].dfa_id = 0;
+//             aho_pkts[i].len = plen;
+//             aho_pkts[i].content = pkt_data;
+//         }
 
-        meta = onvm_get_pkt_meta((struct rte_mbuf *)pkts[i]);
-        meta->action = ONVM_NF_ACTION_TONF;
-        meta->destination = destination;
-    }
+//         meta = onvm_get_pkt_meta((struct rte_mbuf *)pkts[i]);
+//         meta->action = ONVM_NF_ACTION_TONF;
+//         meta->destination = destination;
+//     }
 
-    aho_packet_handler(aho_pkts, nb_pkts);
+//     aho_packet_handler(aho_pkts, nb_pkts);
 
-    return 0;
-}
+//     return 0;
+// }
 
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
@@ -238,38 +244,39 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         //         aho_preprocess_dfa(&dfa_arr[i]);
         //     }
         // }
-
+        //printf("this is packet packet_handler\n");
         static uint32_t counter = 0;
         if (++counter == print_delay) {
                 do_stats_display(pkt);
                 printf("this is %d packets\n", print_delay);
                 counter = 0;
         }
+        uint16_t num_pkts = 1;
+        // check udp packet
+        struct udp_hdr *udp;
+        udp = onvm_pkt_udp_hdr(pkt);
+        if (udp != NULL) {
+            uint8_t *pkt_data;
+            uint8_t *eth;
+            uint16_t plen;
+            uint16_t hlen;
 
-        // //check udp packet
-        // struct udp_hdr *udp;
-        // udp = onvm_pkt_udp_hdr(pkt);
-        // if (udp != NULL) {
-        //     uint8_t *pkt_data;
-        //     uint8_t *eth;
-        //     uint16_t plen;
-        //     uint16_t hlen;
+            //get at the payload
+            pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
+            //calculate length
+            eth = rte_pktmbuf_mtod(pkt, uint8_t *);
+            hlen = pkt_data - eth;
+            plen = pkt->pkt_len - hlen;
 
-        //     //get at the payload
-        //     pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
-        //     //calculate length
-        //     eth = rte_pktmbuf_mtod(pkt, uint8_t *);
-        //     hlen = pkt_data - eth;
-        //     plen = pkt->pkt_len - hlen;
-
-        //     //aho-corasick
-        //     struct aho_pkt pkts;
-        //     pkts.pkt_id = 0;
-        //     pkts.dfa_id = 0;
-        //     pkts.len = plen;
-        //     pkts.content = pkt_data;
-        //     aho_packet_handler(&pkts);
-        // }
+            //aho-corasick
+            struct aho_pkt pkts;
+            pkts.pkt_id = 0;
+            pkts.dfa_id = 0;
+            pkts.len = plen;
+            pkts.content = pkt_data;
+            // printf("%s\n", pkt_data);
+            aho_packet_handler(&pkts, num_pkts);
+        }
 
         meta->action = ONVM_NF_ACTION_TONF;
         meta->destination = destination;
@@ -291,7 +298,7 @@ main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
-        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);

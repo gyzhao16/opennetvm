@@ -21,6 +21,7 @@
 
 //change pattern file
 //#define AHO_PATTERN_FILE "../../../data_dump/snort/snort_dfa_patterns"
+// #define AHO_PATTERN_FILE "simple_forward/dfa-rules"
 #define AHO_PATTERN_FILE "dfa-rules"
 
 #define AHO_PACKET_FILE "../../../data_dump/snort/snort_packets"

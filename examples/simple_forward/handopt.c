@@ -139,13 +139,6 @@ static void process_batch_diff(const struct aho_dfa *dfa_arr,
 
 static void ids_func(void *ptr)
 {
-
-	static int num_display = 0;
-	num_display ++;
-	if (num_display == 10){
-		num_display = 0;
-	}
-
 	int i, j, k;
 
 	struct aho_ctrl_blk *cb = (struct aho_ctrl_blk *) ptr;
@@ -155,7 +148,6 @@ static void ids_func(void *ptr)
 	int num_pkts = cb->num_pkts;
 
 	// red_printf("Starting thread %d\n", id);
-	printf("Starting thread %d\n", id);
 
 	/* Big batch variables */
 	int bb_i = 0;
@@ -179,7 +171,7 @@ static void ids_func(void *ptr)
 	int tot_same_dfa_and_len = 0;
 	int tot_same_dfa = 0;
 	int tot_diff = 0;
-	printf("num 1\n");
+	// printf("bp1\n");
 	// while(1) {
 		struct timespec start, end;
 		clock_gettime(CLOCK_REALTIME, &start);
@@ -190,7 +182,6 @@ static void ids_func(void *ptr)
 			bbatch[bb_i] = pkts[i];		/* Shallow copy */
 			bb_i++;
 
-			printf("num2\n");
 			if(bb_i == BIG_BATCH_SIZE) {
 				/* The big batch is full */
 				qsort(bbatch, BIG_BATCH_SIZE, sizeof(struct aho_pkt), compare);
@@ -259,7 +250,7 @@ static void ids_func(void *ptr)
 				bb_i = 0;
 			}
 		}
-
+		// printf("bp2\n");
 		clock_gettime(CLOCK_REALTIME, &end);
 
 		double ns = (end.tv_sec - start.tv_sec) * 1000000000 +
@@ -278,20 +269,14 @@ static void ids_func(void *ptr)
 			// red_printf("Thread 0: Total rate across all threads = %.2f Gbps. "
 			// 	"Average rate per thread = %.2f Gbps\n",
 			// 	total_rate, total_rate / cb->tot_threads);
-			if (num_display == 0) {
-				printf("Thread 0: Total rate across all threads = %.2f Gbps. "
-					"Average rate per thread = %.2f Gbps\n",
-					total_rate, total_rate / cb->tot_threads);
-			}
 		}
-		if (num_display == 0) {
-			printf("ID %d: Rate = %.2f Gbps. tot_success = %d\n", id,
-				((double) tot_bytes * 8) / ns, tot_success);
-			printf("num_pkts = %d, tot_proc = %d, matched_pat_sum = %d\n"
-				"same_dfa_and_len %d, same_dfa = %d, diff = %d\n",
-				num_pkts, tot_proc, matched_pat_sum,
-				tot_same_dfa_and_len, tot_same_dfa, tot_diff);
-		}
+	
+		// printf("ID %d: Rate = %.2f Gbps. tot_success = %d\n", id,
+		// 	((double) tot_bytes * 8) / ns, tot_success);
+		// printf("num_pkts = %d, tot_proc = %d, matched_pat_sum = %d\n"
+		// 	"same_dfa_and_len %d, same_dfa = %d, diff = %d\n",
+		// 	num_pkts, tot_proc, matched_pat_sum,
+		// 	tot_same_dfa_and_len, tot_same_dfa, tot_diff);
 
 		tot_same_dfa_and_len = 0;
 		tot_same_dfa = 0;
@@ -302,18 +287,190 @@ static void ids_func(void *ptr)
 		tot_bytes = 0;
 		tot_proc = 0;
 
-		// #if DEBUG == 1		 Print matched states only once 
-		// exit(0);
-		// #endif
+		//#if DEBUG == 1		/* Print matched states only once */
+		//exit(0);
+		//#endif
 	// }
-
 }
+
+// static void ids_func(void *ptr)
+// {
+
+// 	static int num_display = 0;
+// 	num_display ++;
+// 	if (num_display == 10){
+// 		num_display = 0;
+// 	}
+
+// 	int i, j, k;
+
+// 	struct aho_ctrl_blk *cb = (struct aho_ctrl_blk *) ptr;
+// 	int id = cb->tid;
+// 	struct aho_dfa *dfa_arr = cb->dfa_arr;
+// 	struct aho_pkt *pkts = cb->pkts;
+// 	int num_pkts = cb->num_pkts;
+
+// 	// red_printf("Starting thread %d\n", id);
+// 	printf("Starting thread %d\n", id);
+
+// 	/* Big batch variables */
+// 	int bb_i = 0;
+// 	struct aho_pkt *bbatch = malloc(BIG_BATCH_SIZE * sizeof(struct aho_pkt));
+// 	memset(bbatch, 0, BIG_BATCH_SIZE * sizeof(struct aho_pkt));
+
+// 	/* Per-batch matched patterns */
+// 	struct mp_list_t mp_list[BATCH_SIZE];
+// 	for(i = 0; i < BATCH_SIZE; i++) {
+// 		mp_list[i].num_match = 0;
+// 	}
+
+// 	/* Being paranoid about GCC optimization: ensure that the memcpys in
+// 	 * process_batch functions don't get optimized out */
+// 	int matched_pat_sum = 0;
+
+// 	int tot_proc = 0;		/* How many packets did we actually match ? */
+// 	int tot_success = 0;	/* Packets that matched a DFA state */ 
+// 	int tot_bytes = 0;		/* Total bytes matched through DFAs */
+
+// 	int tot_same_dfa_and_len = 0;
+// 	int tot_same_dfa = 0;
+// 	int tot_diff = 0;
+// 	printf("num 1\n");
+// 	// while(1) {
+// 		struct timespec start, end;
+// 		clock_gettime(CLOCK_REALTIME, &start);
+
+// 		for(i = 0; i < num_pkts; i++) {
+// 			// printf("%d\n", i);
+// 			/* Add the new packet to the big batch */
+// 			bbatch[bb_i] = pkts[i];		/* Shallow copy */
+// 			bb_i++;
+
+// 			// printf("num2\n");
+// 			if(bb_i == BIG_BATCH_SIZE) {
+// 				/* The big batch is full */
+// 				qsort(bbatch, BIG_BATCH_SIZE, sizeof(struct aho_pkt), compare);
+
+// 				for(j = 0; j < BIG_BATCH_SIZE; j += BATCH_SIZE) {
+// 					int same_dfa_and_len = 1, same_dfa = 1;
+// 					int _len = bbatch[j].len;
+// 					int _dfa_id = bbatch[j].dfa_id;
+
+// 					for(k = j; k < j + BATCH_SIZE; k++) {
+// 						if(bbatch[k].len != _len) {
+// 							same_dfa_and_len = 0;
+// 						}
+
+// 						if(bbatch[k].dfa_id != _dfa_id) {
+// 							same_dfa_and_len = 0;
+// 							same_dfa = 0;
+// 							break;
+// 						}
+// 					}
+
+// 					if(same_dfa_and_len == 1) {
+// 						tot_same_dfa_and_len++;
+// 						process_batch_same_dfa_and_len(&dfa_arr[_dfa_id],
+// 							&bbatch[j], mp_list, _len);
+// 					} else if(same_dfa == 1) {
+// 						tot_same_dfa++;
+// 						process_batch_same_dfa(&dfa_arr[_dfa_id],
+// 							&bbatch[j], mp_list);
+// 					} else {
+// 						tot_diff++;
+// 						process_batch_diff(dfa_arr, &bbatch[j], mp_list);
+// 					}
+
+// 					for(k = 0; k < BATCH_SIZE; k++) {
+// 						int num_match = mp_list[k].num_match;
+// 						assert(num_match < MAX_MATCH);
+
+// 						tot_success += (num_match == 0 ? 0 : 1);
+// 						tot_proc++;
+// 						tot_bytes += bbatch[j + k].len;
+
+// 						int pat_i;
+
+// 						#if DEBUG == 1
+// 						printf("Pkt %d matched: ", bbatch[j + k].pkt_id);
+
+// 						for(pat_i = 0; pat_i < num_match; pat_i++) {
+// 							printf("%d ", mp_list[k].ptrn_id[pat_i]);
+// 							matched_pat_sum += mp_list[k].ptrn_id[pat_i];
+// 						}
+
+// 						printf("\n");
+// 						#else
+// 						for(pat_i = 0; pat_i < num_match; pat_i++) {
+// 							matched_pat_sum += mp_list[k].ptrn_id[pat_i];
+// 						}
+// 						#endif
+
+// 						/* Re-initialize for next iteration */
+// 						mp_list[k].num_match = 0;
+// 					}
+// 				}
+
+// 				/* Reset big batch index */
+// 				bb_i = 0;
+// 			}
+// 		}
+
+// 		clock_gettime(CLOCK_REALTIME, &end);
+
+// 		double ns = (end.tv_sec - start.tv_sec) * 1000000000 +
+// 			(double) (end.tv_nsec - start.tv_nsec);
+
+// 		cb->stats[id].tput = (double) (tot_bytes * 8) / ns;
+
+// 		/* Thread 0 prints total throughput, all threads print their own */
+// 		if(id == 0) {
+// 			double total_rate = 0;
+// 			int thread_i = 0;
+// 			for(thread_i = 0; thread_i < cb->tot_threads; thread_i++) {
+// 				total_rate += cb->stats[thread_i].tput;
+// 			}
+				
+// 			// red_printf("Thread 0: Total rate across all threads = %.2f Gbps. "
+// 			// 	"Average rate per thread = %.2f Gbps\n",
+// 			// 	total_rate, total_rate / cb->tot_threads);
+// 			if (num_display == 0) {
+// 				printf("Thread 0: Total rate across all threads = %.2f Gbps. "
+// 					"Average rate per thread = %.2f Gbps\n",
+// 					total_rate, total_rate / cb->tot_threads);
+// 			}
+// 		}
+// 		if (num_display == 0) {
+// 			printf("ID %d: Rate = %.2f Gbps. tot_success = %d\n", id,
+// 				((double) tot_bytes * 8) / ns, tot_success);
+// 			printf("num_pkts = %d, tot_proc = %d, matched_pat_sum = %d\n"
+// 				"same_dfa_and_len %d, same_dfa = %d, diff = %d\n",
+// 				num_pkts, tot_proc, matched_pat_sum,
+// 				tot_same_dfa_and_len, tot_same_dfa, tot_diff);
+// 		}
+
+// 		tot_same_dfa_and_len = 0;
+// 		tot_same_dfa = 0;
+// 		tot_diff = 0;
+
+// 		matched_pat_sum = 0;	/* Sum of all matched pattern IDs */
+// 		tot_success = 0;
+// 		tot_bytes = 0;
+// 		tot_proc = 0;
+
+// 		// #if DEBUG == 1		 Print matched states only once 
+// 		// exit(0);
+// 		// #endif
+// 	// }
+
+// }
 
 int aho_packet_handler(/*int argc, char *argv[], */struct aho_pkt *pkts, uint16_t num_pkts)
 {
 	//initialize DFAs during 1st invocation
 	static int dfa_init_flag = 0;
-
+	// static int counter = 0;
+	// counter ++;
 	//add param
 	//int argc = 2;
 	int i;
@@ -337,10 +494,10 @@ int aho_packet_handler(/*int argc, char *argv[], */struct aho_pkt *pkts, uint16_
 	static int num_patterns;
 
 	static struct aho_pattern *patterns;
-	
+
 	//get pkts from simple_forward
 	//struct aho_pkt *pkts;
-	
+
 	static struct aho_dfa dfa_arr[AHO_MAX_DFA];
 
 	/* Thread structures */
@@ -350,8 +507,8 @@ int aho_packet_handler(/*int argc, char *argv[], */struct aho_pkt *pkts, uint16_
 	struct aho_ctrl_blk worker_cb;
 
 
-	printf("State size = %lu\n", sizeof(struct aho_state));
-	
+	// printf("State size = %lu\n", sizeof(struct aho_state));
+
 	if (dfa_init_flag == 0) {
 
 		dfa_init_flag ++;
@@ -377,11 +534,14 @@ int aho_packet_handler(/*int argc, char *argv[], */struct aho_pkt *pkts, uint16_
 			aho_preprocess_dfa(&dfa_arr[i]);
 		}
 	}
+	// if (counter == 10000) {
+	// 	printf("Reading another 10000 packets from NetVM\n");
+	// 	counter = 0;
+	// }
 
-	printf("Reading packets from NetVM\n");
 	//get pkts from simple_forward
 	//pkts = aho_get_pkts(AHO_PACKET_FILE, &num_pkts);
-	
+
 	// for(i = 0; i < num_threads; i++) {
 	// 	worker_cb[i].stats = stats;
 	// 	worker_cb[i].tot_threads = num_threads;
