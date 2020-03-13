@@ -493,8 +493,8 @@ int main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
-        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
-        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
