@@ -203,7 +203,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                 /* Encrypt. */
                 /* IV should change with every packet, but we don't have any
                  * way to send it to the other side. */
-                aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 256, iv[0]);
+                aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 128, iv[0]);
                 hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
                 if (counter == 0) {
                         printf("Encrypted %d bytes at offset %d (%ld)\n", plen, hlen,
@@ -227,7 +227,7 @@ packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
         int i = 0;
 
         counter += nb_pkts;
-        if (counter == print_delay) {
+        if (counter >= print_delay) {
                 do_stats_display(pkt[0]);
                 counter = 0;
         }
@@ -251,7 +251,7 @@ packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
                 /* Encrypt. */
                 /* IV should change with every packet, but we don't have any
                  * way to send it to the other side. */
-                        aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 256, iv[0]);
+                        aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 128, iv[0]);
                         hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
                         if (counter == 0) {
                                 printf("Encrypted %d bytes at offset %d (%ld)\n", plen, hlen,

@@ -57,6 +57,7 @@
 
 /*************************** HEADER FILES ***************************/
 #include "aes.h"
+#include "aesni.h"
 #include <memory.h>
 #include <stdlib.h>
 
@@ -960,8 +961,20 @@ InvMixColumns(BYTE state[][4]) {
 // (En/De)Crypt
 /////////////////
 
+static int key_init_flag = 0;
+static AES_KEY aes_key;
+
 void
 aes_encrypt(const BYTE in[], BYTE out[], const WORD key[], int keysize) {
+        if (keysize == 128) { // TODO: ugly
+                if (!key_init_flag) {
+                        memcpy(aes_key.rd_key, key, sizeof(WORD) * 60);
+                        aes_key.rounds = 10;
+                        key_init_flag = 1;
+                }
+                aesni_encrypt(in, out, &aes_key);
+                return;
+        }
         BYTE state[4][4];
 
         // Copy input array (should be 16 bytes long) to a matrix (sequential bytes are ordered
