@@ -40,8 +40,6 @@ endif
 
 RTE_TARGET ?= x86_64-native-linuxapp-gcc
 
-
-
 # Default target, can be overriden by command line or environment
 include $(RTE_SDK)/mk/rte.vars.mk
 
@@ -49,12 +47,12 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = simple_forward
 
 # all source are stored in SRCS-y
-SRCS-y := forward.c
+SRCS-y := forward.c aho.c ds_queue.c handopt.c util.c
 
 # OpenNetVM path
 ONVM= $(SRCDIR)/../../onvm
 
-CFLAGS += -fgnu89-inline
+CFLAGS += -fgnu89-inline -Wno-unused-result -lrt -lpthread -Wall -Werror -march=native
 CFLAGS += $(WERROR_FLAGS) -O3 $(USER_FLAGS)
 
 CFLAGS += -I$(ONVM)/onvm_nflib
@@ -65,7 +63,7 @@ LDFLAGS += $(ONVM)/lib/$(RTE_TARGET)/lib/libonvmhelper.a -lm
 # workaround for a gcc bug with noreturn attribute
 # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=12603
 ifeq ($(CONFIG_RTE_TOOLCHAIN_GCC),y)
-CFLAGS_main.o += -Wno-return-type
+CFLAGS_main.o += -Wno-return-type 
 endif
 
 include $(RTE_SDK)/mk/rte.extapp.mk
