@@ -264,6 +264,54 @@ packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
         return 0;
 }
 
+static int
+packet_bulk_handler_opt(struct rte_mbuf **pkt, uint16_t nb_pkts,
+                                 __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+                static uint32_t counter = 0;
+        struct udp_hdr *udp;
+        struct onvm_pkt_meta *meta;
+        uint8_t hmac_out[SHA1_DIGEST_SIZE];
+        size_t hmac_len = 0;
+        int i = 0;
+
+        counter += nb_pkts;
+        if (counter >= print_delay) {
+                do_stats_display(pkt[0]);
+                counter = 0;
+        }
+        for (i = 0; i < nb_pkts; i++) {
+                meta = onvm_get_pkt_meta(pkt[i]);
+                /* Check if we have a valid UDP packet */
+                udp = onvm_pkt_udp_hdr(pkt[i]);
+                if (udp != NULL) {
+                        uint8_t *pkt_data;
+                        uint8_t *eth;
+                        uint16_t plen;
+                        uint16_t hlen;
+
+                /* Get at the payload */
+                        pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
+                /* Calculate length */
+                        eth = rte_pktmbuf_mtod(pkt[i], uint8_t *);
+                        hlen = pkt_data - eth;
+                        plen = pkt[i]->pkt_len - hlen;
+
+                /* Encrypt. */
+                /* IV should change with every packet, but we don't have any
+                 * way to send it to the other side. */
+                        aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 128, iv[0]);
+                        hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
+                        if (counter == 0) {
+                                printf("Encrypted %d bytes at offset %d (%ld)\n", plen, hlen,
+                                       sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
+                        }
+                }
+                meta->action = ONVM_NF_ACTION_TONF;
+                meta->destination = destination;
+        }
+        return 0;
+}
+
 int
 main(int argc, char *argv[]) {
         struct onvm_nf_local_ctx *nf_local_ctx;
