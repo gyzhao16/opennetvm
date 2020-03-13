@@ -196,11 +196,31 @@ do_stats_display(void) {
         printf("\n\n");
 }
 
+static uint32_t
+firewall_check(struct rte_mbuf *pkt) {
+        struct ipv4_hdr* ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
+        uint16_t src_port, dst_port;
+
+        if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
+                struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
+                src_port = tcp->src_port;
+                dst_port = tcp->dst_port;
+        } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
+                struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
+                src_port = udp->src_port;
+                dst_port = udp->dst_port;
+        } else {
+                // protocol unknown, return 0;
+                return 0;
+        }
+        return firewall_5tuple_handler(ipv4_hdr->src_addr, ipv4_hdr->dst_addr, 
+                                        ipv4_hdr->next_proto_id, 
+                                        src_port, dst_port);
+}
+
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-        struct ipv4_hdr *ipv4_hdr;
-        uint16_t src_port, dst_port;
         static uint32_t counter = 0;
         int ret;
         uint32_t rule = 0;
@@ -221,26 +241,11 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                 return 0;
         }
 
-        ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
-        if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
-                struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
-                src_port = tcp->src_port;
-                dst_port = tcp->dst_port;
-        } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
-                struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
-                src_port = udp->src_port;
-                dst_port = udp->dst_port;
-        } else {
-                // protocol unknown, return 0;
-                return 0;
-        }
-        rule = firewall_5tuple_handler(ipv4_hdr->src_addr, ipv4_hdr->dst_addr, 
-                                        ipv4_hdr->next_proto_id, 
-                                        src_port, dst_port);
+        ret = firewall_check(pkt);
         
         // ret = rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), &rule);
 
-        if (debug) onvm_pkt_parse_char_ip(ip_string, rte_be_to_cpu_32(ipv4_hdr->src_addr));
+        // if (debug) onvm_pkt_parse_char_ip(ip_string, rte_be_to_cpu_32(ipv4_hdr->src_addr));
 
         if (ret < 0) {
                 meta->action = ONVM_NF_ACTION_DROP;
@@ -270,11 +275,8 @@ static int
 packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
         // TODO: To be hand optimized
-        struct ipv4_hdr *ipv4_hdr;
-        uint16_t src_port, dst_port;
         static uint32_t counter = 0;
         int ret;
-        uint32_t rules[BATCH_SIZE];
         uint32_t track_ip = 0;
         uint32_t rule = 0;
         char ip_string[16];
@@ -298,27 +300,8 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
                         continue;
                 }
 
-                ipv4_hdr = onvm_pkt_ipv4_hdr(pkts[i]);
-                
-                // rte_lpm_lookup(lpm_tbl, rte_be_to_cpu_32(ipv4_hdr->src_addr), rules);
-                if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
-                        struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkts[i]);
-                        src_port = tcp->src_port;
-                        dst_port = tcp->dst_port;
-                } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
-                        struct udp_hdr *udp = onvm_pkt_udp_hdr(pkts[i]);
-                        src_port = udp->src_port;
-                        dst_port = udp->dst_port;
-                } else {
-                        // protocol unknown, return 0;
-                        continue;
-                }
-                rule = firewall_5tuple_handler(ipv4_hdr->src_addr, ipv4_hdr->dst_addr, 
-                                        ipv4_hdr->next_proto_id, 
-                                        src_port, dst_port);
-
+                ret = firewall_check(pkts[i]);
                 // ret = (rules[i] & RTE_LPM_LOOKUP_SUCCESS) ? 0 : -ENOENT;
-                ret = rule;
                 meta = onvm_get_pkt_meta((struct rte_mbuf *)pkts[i]);
                 if (ret < 0) {
                         meta->action = ONVM_NF_ACTION_DROP;
