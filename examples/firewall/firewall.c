@@ -283,14 +283,6 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
         stats.pkt_total += nb_pkts;
 
         for (int i = 0; i < nb_pkts; i++) {
-                if (!onvm_pkt_is_ipv4(pkts[i])) {
-                        if (debug) RTE_LOG(INFO, APP, "Packet received not ipv4\n");
-                        stats.pkt_not_ipv4++;
-                        meta = onvm_get_pkt_meta(pkts[i]);
-                        meta->action = ONVM_NF_ACTION_DROP;
-                        continue;
-                }
-
                 ret = firewall_check(pkts[i]);
                 // ret = (rules[i] & RTE_LPM_LOOKUP_SUCCESS) ? 0 : -ENOENT;
                 meta = onvm_get_pkt_meta((struct rte_mbuf *)pkts[i]);
@@ -501,8 +493,8 @@ int main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
-        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
-        nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);

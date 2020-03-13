@@ -570,8 +570,8 @@ onvm_nflib_thread_main_loop(void *arg) {
                 }
 
                 nb_pkts_added =
-                        onvm_nflib_dequeue_packets((void **)pkts, nf_local_ctx, nf->function_table->pkt_handler);
-                        // onvm_nflib_dequeue_packets_bulk((void **)pkts, nf_local_ctx, nf->function_table->pkt_bulk_handler);
+                        // onvm_nflib_dequeue_packets((void **)pkts, nf_local_ctx, nf->function_table->pkt_handler);
+                        onvm_nflib_dequeue_packets_bulk((void **)pkts, nf_local_ctx, nf->function_table->pkt_bulk_handler);
 
                 if (likely(nb_pkts_added > 0)) {
                         onvm_pkt_process_tx_batch(nf->nf_tx_mgr, pkts, nb_pkts_added, nf);
