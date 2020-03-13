@@ -316,23 +316,23 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
 }
 
 #include "fpp.h"
+#define MAX_BATCH_SIZE 32
 static int
 packet_bulk_handler_opt(struct rte_mbuf **pkts, uint16_t nb_pkts,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-	int ret[BATCH_SIZE];
+	int ret[MAX_BATCH_SIZE];
         int counter = 0;
-	struct onvm_pkt_meta *meta[BATCH_SIZE];
+	struct onvm_pkt_meta *meta[MAX_BATCH_SIZE];
 
 	int I = 0;			// batch index
-	void *batch_rips[BATCH_SIZE];		// goto targets
+	void *batch_rips[MAX_BATCH_SIZE];		// goto targets
 	int iMask = 0;		// No packet is done yet
 
 	int temp_index;
-	for(temp_index = 0; temp_index < BATCH_SIZE; temp_index ++) {
+	for(temp_index = 0; temp_index < MAX_BATCH_SIZE; temp_index ++) {
 		batch_rips[temp_index] = &&fpp_start;
 	}
 
-fpp_start:
         counter += nb_pkts;
         if (counter >= print_delay) {
                 do_stats_display();
@@ -341,9 +341,9 @@ fpp_start:
 
         stats.pkt_total += nb_pkts;
 
-        FPP_PSS(pkts[I], fpp_label_1, BATCH_SIZE);
+fpp_start:
+        FPP_PSS(pkts[I], fpp_label_1, nb_pkts);
 fpp_label_1:
-
         ret[I] = firewall_check(pkts[I]);
         meta[I] = onvm_get_pkt_meta((struct rte_mbuf *)pkts[I]);
         if (ret[I] < 0) {
@@ -366,7 +366,7 @@ fpp_label_1:
 fpp_end:
 	batch_rips[I] = &&fpp_end;
 	iMask = FPP_SET(iMask, I); 
-	if(iMask == (1 << nb_pkts) - 1) {
+	if(iMask == (nb_pkts < 32 ? (1 << nb_pkts) - 1 : -1)) {
 		return 0;
 	}
 	I = (I + 1) < nb_pkts ? I + 1 : 0;
@@ -501,8 +501,8 @@ int main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
-        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
-        nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
