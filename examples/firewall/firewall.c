@@ -223,9 +223,6 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
         static uint32_t counter = 0;
         int ret;
-        uint32_t rule = 0;
-        uint32_t track_ip = 0;
-        char ip_string[16];
 
         if (++counter == print_delay) {
                 do_stats_display();
@@ -250,21 +247,18 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         if (ret < 0) {
                 meta->action = ONVM_NF_ACTION_DROP;
                 stats.pkt_drop++;
-                if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
                 return 0;
         }
 
-        switch (rule) {
+        switch (ret) {
                 case 0:
                         meta->action = ONVM_NF_ACTION_TONF;
                         meta->destination = destination;
                         stats.pkt_accept++;
-                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been accepted\n", ip_string);
                         break;
                 default:
                         meta->action = ONVM_NF_ACTION_DROP;
                         stats.pkt_drop++;
-                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
                         break;
         }
 
@@ -277,9 +271,6 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
         // TODO: To be hand optimized
         static uint32_t counter = 0;
         int ret;
-        uint32_t track_ip = 0;
-        uint32_t rule = 0;
-        char ip_string[16];
         int i = 0;
         struct onvm_pkt_meta *meta;
 
@@ -306,26 +297,83 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
                 if (ret < 0) {
                         meta->action = ONVM_NF_ACTION_DROP;
                         stats.pkt_drop++;
-                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
                         return 0;
                 }
 
-                switch (rule) {
+                switch (ret) {
                 case 0:
                         meta->action = ONVM_NF_ACTION_TONF;
                         meta->destination = destination;
                         stats.pkt_accept++;
-                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been accepted\n", ip_string);
                         break;
                 default:
                         meta->action = ONVM_NF_ACTION_DROP;
                         stats.pkt_drop++;
-                        if (debug) RTE_LOG(INFO, APP, "Packet from source IP %s has been dropped\n", ip_string);
                         break;
                 }
         }
         return 0;
 }
+
+#include "fpp.h"
+#define MAX_BATCH_SIZE 32
+static int
+packet_bulk_handler_opt(struct rte_mbuf **pkts, uint16_t nb_pkts,
+               __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+	int ret[MAX_BATCH_SIZE];
+        int counter = 0;
+	struct onvm_pkt_meta *meta[MAX_BATCH_SIZE];
+
+	int I = 0;			// batch index
+	void *batch_rips[MAX_BATCH_SIZE];		// goto targets
+	int iMask = 0;		// No packet is done yet
+
+	int temp_index;
+	for(temp_index = 0; temp_index < MAX_BATCH_SIZE; temp_index ++) {
+		batch_rips[temp_index] = &&fpp_start;
+	}
+
+        counter += nb_pkts;
+        if (counter >= print_delay) {
+                do_stats_display();
+                counter = 0;
+        }
+
+        stats.pkt_total += nb_pkts;
+
+fpp_start:
+        FPP_PSS(pkts[I], fpp_label_1, nb_pkts);
+fpp_label_1:
+        ret[I] = firewall_check(pkts[I]);
+        meta[I] = onvm_get_pkt_meta((struct rte_mbuf *)pkts[I]);
+        if (ret[I] < 0) {
+                meta[I]->action = ONVM_NF_ACTION_DROP;
+                stats.pkt_drop++;
+        }
+
+        switch (ret[I]) {
+                case 0:
+                        meta[I]->action = ONVM_NF_ACTION_TONF;
+                        meta[I]->destination = destination;
+                        stats.pkt_accept++;
+                        break;
+                default:
+                        meta[I]->action = ONVM_NF_ACTION_DROP;
+                        stats.pkt_drop++;
+                        break;
+        }
+        
+fpp_end:
+	batch_rips[I] = &&fpp_end;
+	iMask = FPP_SET(iMask, I); 
+	if(iMask == (nb_pkts < 32 ? (1 << nb_pkts) - 1 : -1)) {
+		return 0;
+	}
+	I = (I + 1) < nb_pkts ? I + 1 : 0;
+	goto *batch_rips[I];
+
+}
+
 
 static int
 lpm_setup(struct onvm_fw_rule **rules, int num_rules) {
@@ -453,7 +501,8 @@ int main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
-        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
