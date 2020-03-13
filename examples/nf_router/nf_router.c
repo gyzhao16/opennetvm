@@ -73,6 +73,10 @@ struct forward_nf {
 /* number of package between each print */
 static uint32_t print_delay = 1000000;
 
+/* alloc a simple tbl24 for routing */
+static uint16_t tbl24[1 << 24];
+int destination;
+
 /*
  * Print a usage message
  */
@@ -82,7 +86,8 @@ usage(const char *progname) {
         printf("%s [EAL args] -- [NF_LIB args] -- <router_config> -p <print_delay>\n", progname);
         printf("%s -F <CONFIG_FILE.json> [EAL args] -- [NF_LIB args] -- [NF args]\n\n", progname);
         printf("Flags:\n");
-        printf(" - `-f <router_cfg>`: router configuration, has a list of (IPs, dest) tuples \n");
+        printf(" - `-d DST`: Destination Service ID to forward to\n");
+        // printf(" - `-f <router_cfg>`: router configuration, has a list of (IPs, dest) tuples \n");
         printf(" - `-p <print_delay>`: number of packets between each print, e.g. `-p 1` prints every packets.\n");
 }
 
@@ -93,11 +98,14 @@ static int
 parse_app_args(int argc, char *argv[], const char *progname) {
         int c = 0;
 
-        while ((c = getopt(argc, argv, "f:p:")) != -1) {
+        while ((c = getopt(argc, argv, "d:p:")) != -1) {
                 switch (c) {
-                        case 'f':
-                                cfg_filename = strdup(optarg);
+                        case 'd':
+                                destination = strtoul(optarg, NULL, 10);
                                 break;
+                        // case 'f':
+                        //         cfg_filename = strdup(optarg);
+                        //         break;
                         case 'p':
                                 print_delay = strtoul(optarg, NULL, 10);
                                 break;
@@ -119,60 +127,6 @@ parse_app_args(int argc, char *argv[], const char *progname) {
         }
 
         return optind;
-}
-
-/*
- * This function parses the forward config. It takes the filename
- * and fills up the forward nf array. This includes the ip and dest
- * address of the onvm_nf
- */
-static int
-parse_router_config(void) {
-        int ret, temp, i;
-        char ip[32];
-        FILE *cfg;
-
-        cfg = fopen(cfg_filename, "r");
-        if (cfg == NULL) {
-                rte_exit(EXIT_FAILURE, "Error openning server \'%s\' config\n", cfg_filename);
-        }
-        ret = fscanf(cfg, "%*s %d", &temp);
-        if (temp <= 0) {
-                rte_exit(EXIT_FAILURE, "Error parsing config, need at least one forward NF configuration\n");
-        }
-        nf_count = temp;
-
-        fwd_nf = (struct forward_nf *)rte_malloc("router fwd_nf info", sizeof(struct forward_nf) * nf_count, 0);
-        if (fwd_nf == NULL) {
-                rte_exit(EXIT_FAILURE, "Malloc failed, can't allocate forward_nf array\n");
-        }
-
-        for (i = 0; i < nf_count; i++) {
-                ret = fscanf(cfg, "%s %d", ip, &temp);
-                if (ret != 2) {
-                        rte_exit(EXIT_FAILURE, "Invalid backend config structure\n");
-                }
-
-                ret = onvm_pkt_parse_ip(ip, &fwd_nf[i].ip);
-                if (ret < 0) {
-                        rte_exit(EXIT_FAILURE, "Error parsing config IP address #%d\n", i);
-                }
-
-                if (temp < 0) {
-                        rte_exit(EXIT_FAILURE, "Error parsing config dest #%d\n", i);
-                }
-                fwd_nf[i].dest = temp;
-        }
-
-        fclose(cfg);
-        printf("\nDest config (%d):\n", nf_count);
-        for (i = 0; i < nf_count; i++) {
-                printf("%" PRIu8 ".%" PRIu8 ".%" PRIu8 ".%" PRIu8 " ", (fwd_nf[i].ip >> 24) & 0xFF, (fwd_nf[i].ip >> 16) & 0xFF,
-                       (fwd_nf[i].ip >> 8) & 0xFF, fwd_nf[i].ip & 0xFF);
-                printf(" %d\n", fwd_nf[i].dest);
-        }
-
-        return ret;
 }
 
 /*
@@ -212,53 +166,65 @@ static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
         static uint32_t counter = 0;
-        struct ether_hdr *eth_hdr;
-        struct arp_hdr *in_arp_hdr;
         struct ipv4_hdr *ip;
-        int i;
 
-        ip = onvm_pkt_ipv4_hdr(pkt);
-
-        /* If the packet doesn't have an IP header check if its an ARP, if so fwd it to the matched NF */
-        if (ip == NULL) {
-                eth_hdr = onvm_pkt_ether_hdr(pkt);
-                if (rte_cpu_to_be_16(eth_hdr->ether_type) == ETHER_TYPE_ARP) {
-                        in_arp_hdr = rte_pktmbuf_mtod_offset(pkt, struct arp_hdr *, sizeof(struct ether_hdr));
-                        for (i = 0; i < nf_count; i++) {
-                                if (rte_be_to_cpu_32(in_arp_hdr->arp_data.arp_tip) == fwd_nf[i].ip) {
-                                        meta->destination = fwd_nf[i].dest;
-                                        meta->action = ONVM_NF_ACTION_TONF;
-                                        return 0;
-                                }
-                        }
-                }
-                meta->action = ONVM_NF_ACTION_DROP;
-                meta->destination = 0;
-                return 0;
-        }
+        uint32_t hash;
+        uint16_t res;
 
         if (++counter == print_delay) {
                 do_stats_display(pkt);
                 counter = 0;
         }
+        
+        ip = onvm_pkt_ipv4_hdr(pkt);
 
-        for (i = 0; i < nf_count; i++) {
-                if (fwd_nf[i].ip == rte_be_to_cpu_32(ip->dst_addr)) {
-                        meta->destination = fwd_nf[i].dest;
-                        meta->action = ONVM_NF_ACTION_TONF;
-                        return 0;
-                }
+        RTE_ASSERT(ip != NULL);
+
+        // just query the table
+        hash = (ip->dst_addr) >> 8;
+        res = tbl24[hash];
+        (void) res;
+
+        meta->destination = destination;
+        meta->action = ONVM_NF_ACTION_TONF;
+        return 0;
+}
+
+static int
+packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
+               __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+        static uint32_t counter = 0;
+        struct ipv4_hdr *ip;
+        int i;
+        uint32_t hash;
+        uint16_t res;
+        struct onvm_pkt_meta *meta;
+
+        counter += nb_pkts;
+
+        if (counter == print_delay) {
+                do_stats_display(pkts[0]);
+                counter = 0;
         }
 
-        meta->action = ONVM_NF_ACTION_DROP;
-        meta->destination = 0;
+        for (i = 0; i < nb_pkts; i++) {
+                ip = onvm_pkt_ipv4_hdr(pkts[i]);
+                meta = onvm_get_pkt_meta(pkts[i]);
+                RTE_ASSERT(ip != NULL);
+                hash = (ip->dst_addr) >> 8;
+                res = tbl24[hash];
+                (void) res;
 
+                meta->destination = destination;
+                meta->action = ONVM_NF_ACTION_TONF;
+        }
         return 0;
 }
 
 int
 main(int argc, char *argv[]) {
         int arg_offset;
+        int i;
         struct onvm_nf_local_ctx *nf_local_ctx;
         struct onvm_nf_function_table *nf_function_table;
         const char *progname = argv[0];
@@ -268,6 +234,12 @@ main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+
+        // initiate table
+        for (i = 0; i < (1 << 24); i++) {
+                tbl24[i] = i & 0xFFFF;
+        }
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
@@ -286,7 +258,7 @@ main(int argc, char *argv[]) {
                 onvm_nflib_stop(nf_local_ctx);
                 rte_exit(EXIT_FAILURE, "Invalid command-line arguments\n");
         }
-        parse_router_config();
+        // parse_router_config();
 
         onvm_nflib_run(nf_local_ctx);
 
