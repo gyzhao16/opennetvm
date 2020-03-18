@@ -62,6 +62,7 @@
 #include "sha.h"
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
+#include "fpp.h"
 
 #define NF_TAG "aes_encrypt"
 
@@ -172,6 +173,40 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
+static int encrypt_pkt(struct rte_mbuf *pkt) {
+        uint8_t *pkt_data = NULL;
+        uint8_t hmac_out[SHA1_DIGEST_SIZE];
+        size_t hmac_len;
+        uint8_t *eth;
+        uint16_t plen;
+        uint16_t hlen;
+        struct ipv4_hdr *ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
+        if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
+                struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
+                pkt_data = ((uint8_t *)tcp) + sizeof(struct tcp_hdr);
+        } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
+                struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
+                pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
+        }
+
+        /* Check if we have a valid UDP packet */
+        if (pkt_data != NULL) {
+                /* Calculate length */
+                eth = rte_pktmbuf_mtod(pkt, uint8_t *);
+                hlen = pkt_data - eth;
+                plen = pkt->pkt_len - hlen;
+
+                /* Encrypt. */
+                /* IV should change with every packet, but we don't have any
+                 * way to send it to the other side. */
+                aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 128, iv[0]);
+                hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
+                return plen;
+        } else {
+                return -1;
+        }
+}
+
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
@@ -219,44 +254,20 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
 static int
 packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
                                  __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-                static uint32_t counter = 0;
-        struct udp_hdr *udp;
+        static uint32_t counter = 0;
         struct onvm_pkt_meta *meta;
-        uint8_t hmac_out[SHA1_DIGEST_SIZE];
-        size_t hmac_len = 0;
-        int i = 0;
+        int res;
 
         counter += nb_pkts;
         if (counter >= print_delay) {
                 do_stats_display(pkt[0]);
                 counter = 0;
         }
-        for (i = 0; i < nb_pkts; i++) {
+        for (int i = 0; i < nb_pkts; i++) {
+                res = encrypt_pkt(pkt[i]);
                 meta = onvm_get_pkt_meta(pkt[i]);
-                /* Check if we have a valid UDP packet */
-                udp = onvm_pkt_udp_hdr(pkt[i]);
-                if (udp != NULL) {
-                        uint8_t *pkt_data;
-                        uint8_t *eth;
-                        uint16_t plen;
-                        uint16_t hlen;
-
-                /* Get at the payload */
-                        pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
-                /* Calculate length */
-                        eth = rte_pktmbuf_mtod(pkt[i], uint8_t *);
-                        hlen = pkt_data - eth;
-                        plen = pkt[i]->pkt_len - hlen;
-
-                /* Encrypt. */
-                /* IV should change with every packet, but we don't have any
-                 * way to send it to the other side. */
-                        aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 128, iv[0]);
-                        hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
-                        if (counter == 0) {
-                                printf("Encrypted %d bytes at offset %d (%ld)\n", plen, hlen,
-                                       sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
-                        }
+                if (counter == 0) {
+                        printf("Encrypted %d bytes\n", res);
                 }
                 meta->action = ONVM_NF_ACTION_TONF;
                 meta->destination = destination;
@@ -267,49 +278,42 @@ packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
 static int
 packet_bulk_handler_opt(struct rte_mbuf **pkt, uint16_t nb_pkts,
                                  __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-                static uint32_t counter = 0;
-        struct udp_hdr *udp;
-        struct onvm_pkt_meta *meta;
-        uint8_t hmac_out[SHA1_DIGEST_SIZE];
-        size_t hmac_len = 0;
-        int i = 0;
+	static uint32_t counter = 0;
+	struct onvm_pkt_meta *meta[MAX_BATCH_SIZE];
+	int res[MAX_BATCH_SIZE];
+
+	int I = 0;			// batch index
+	void *batch_rips[MAX_BATCH_SIZE];		// goto targets
+	int iMask = 0;		// No packet is done yet
+
+	int temp_index;
+	for (temp_index = 0; temp_index < MAX_BATCH_SIZE; temp_index ++) {
+		batch_rips[temp_index] = &&fpp_start;
+	}   
 
         counter += nb_pkts;
         if (counter >= print_delay) {
                 do_stats_display(pkt[0]);
                 counter = 0;
         }
-        for (i = 0; i < nb_pkts; i++) {
-                meta = onvm_get_pkt_meta(pkt[i]);
-                /* Check if we have a valid UDP packet */
-                udp = onvm_pkt_udp_hdr(pkt[i]);
-                if (udp != NULL) {
-                        uint8_t *pkt_data;
-                        uint8_t *eth;
-                        uint16_t plen;
-                        uint16_t hlen;
-
-                /* Get at the payload */
-                        pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
-                /* Calculate length */
-                        eth = rte_pktmbuf_mtod(pkt[i], uint8_t *);
-                        hlen = pkt_data - eth;
-                        plen = pkt[i]->pkt_len - hlen;
-
-                /* Encrypt. */
-                /* IV should change with every packet, but we don't have any
-                 * way to send it to the other side. */
-                        aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 128, iv[0]);
-                        hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
-                        if (counter == 0) {
-                                printf("Encrypted %d bytes at offset %d (%ld)\n", plen, hlen,
-                                       sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
-                        }
-                }
-                meta->action = ONVM_NF_ACTION_TONF;
-                meta->destination = destination;
+fpp_start:
+        FPP_PSS(pkt[I], fpp_label_1, nb_pkts);
+fpp_label_1:
+        res[I] = encrypt_pkt(pkt[I]);
+        meta[I] = onvm_get_pkt_meta(pkt[I]);
+        if (counter == 0) {
+                printf("Encrypted %d bytes\n", res[I]);
         }
-        return 0;
+        meta[I]->action = ONVM_NF_ACTION_TONF;
+        meta[I]->destination = destination;
+fpp_end:
+	batch_rips[I] = &&fpp_end;
+	iMask = FPP_SET(iMask, I); 
+	if(iMask == (nb_pkts < MAX_BATCH_SIZE ? (1 << nb_pkts) - 1 : -1)) {
+		return 0;
+	}
+	I = (I + 1) < nb_pkts ? I + 1 : 0;
+	goto *batch_rips[I];
 }
 
 int
@@ -325,7 +329,10 @@ main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
+        RTE_SET_USED(packet_bulk_handler);
+        RTE_SET_USED(packet_bulk_handler_opt);
         nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);

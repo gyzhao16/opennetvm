@@ -307,8 +307,6 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
         return 0;
 }
 
-#include "fpp.h"
-#define MAX_BATCH_SIZE 32
 static int
 packet_bulk_handler_opt(struct rte_mbuf **pkts, uint16_t nb_pkts,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
@@ -358,7 +356,7 @@ fpp_label_1:
 fpp_end:
 	batch_rips[I] = &&fpp_end;
 	iMask = FPP_SET(iMask, I); 
-	if(iMask == (nb_pkts < 32 ? (1 << nb_pkts) - 1 : -1)) {
+	if(iMask == (nb_pkts < MAX_BATCH_SIZE ? (1 << nb_pkts) - 1 : -1)) {
 		return 0;
 	}
 	I = (I + 1) < nb_pkts ? I + 1 : 0;
