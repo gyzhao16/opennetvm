@@ -142,7 +142,6 @@ static void ids_func(void *ptr)
 	int i, j, k;
 
 	struct aho_ctrl_blk *cb = (struct aho_ctrl_blk *) ptr;
-	int id = cb->tid;
 	struct aho_dfa *dfa_arr = cb->dfa_arr;
 	struct aho_pkt *pkts = cb->pkts;
 	int num_pkts = cb->num_pkts;
@@ -171,10 +170,6 @@ static void ids_func(void *ptr)
 	int tot_same_dfa_and_len = 0;
 	int tot_same_dfa = 0;
 	int tot_diff = 0;
-	// printf("bp1\n");
-	// while(1) {
-		struct timespec start, end;
-		clock_gettime(CLOCK_REALTIME, &start);
 
 		for(i = 0; i < num_pkts; i++) {
 
@@ -250,33 +245,6 @@ static void ids_func(void *ptr)
 				bb_i = 0;
 			}
 		}
-		// printf("bp2\n");
-		clock_gettime(CLOCK_REALTIME, &end);
-
-		double ns = (end.tv_sec - start.tv_sec) * 1000000000 +
-			(double) (end.tv_nsec - start.tv_nsec);
-
-		cb->stats[id].tput = (double) (tot_bytes * 8) / ns;
-
-		/* Thread 0 prints total throughput, all threads print their own */
-		if(id == 0) {
-			double total_rate = 0;
-			int thread_i = 0;
-			for(thread_i = 0; thread_i < cb->tot_threads; thread_i++) {
-				total_rate += cb->stats[thread_i].tput;
-			}
-				
-			// red_printf("Thread 0: Total rate across all threads = %.2f Gbps. "
-			// 	"Average rate per thread = %.2f Gbps\n",
-			// 	total_rate, total_rate / cb->tot_threads);
-		}
-	
-		// printf("ID %d: Rate = %.2f Gbps. tot_success = %d\n", id,
-		// 	((double) tot_bytes * 8) / ns, tot_success);
-		// printf("num_pkts = %d, tot_proc = %d, matched_pat_sum = %d\n"
-		// 	"same_dfa_and_len %d, same_dfa = %d, diff = %d\n",
-		// 	num_pkts, tot_proc, matched_pat_sum,
-		// 	tot_same_dfa_and_len, tot_same_dfa, tot_diff);
 
 		tot_same_dfa_and_len = 0;
 		tot_same_dfa = 0;
@@ -287,10 +255,7 @@ static void ids_func(void *ptr)
 		tot_bytes = 0;
 		tot_proc = 0;
 
-		//#if DEBUG == 1		/* Print matched states only once */
-		//exit(0);
-		//#endif
-	// }
+		free(bbatch);
 }
 
 // static void ids_func(void *ptr)

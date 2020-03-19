@@ -162,16 +162,14 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
+#define MAX_BATCH_SIZE 32
+
 static int 
 packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts, 
                     __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
     static uint32_t counter = 0;
-    static uint32_t func_counter = 0;
-    func_counter ++;
-    if (func_counter >= 10) {
-        // printf("%d\n", func_counter);
-        func_counter = 0;
-    }
+    struct aho_pkt aho_pkts[MAX_BATCH_SIZE];
+
     int i = 0;
     struct onvm_pkt_meta *meta;
     // printf("this is bulk function\n");
@@ -181,9 +179,7 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
         counter = 0;
     }
     // printf("%d\n", nb_pkts);
-    struct aho_pkt *aho_pkts;
-    aho_pkts = (struct aho_pkt *) malloc(nb_pkts * 
-        sizeof(struct aho_pkt));
+    RTE_ASSERT(nb_pkts <= MAX_BATCH_SIZE);
     
     for (i = 0; i < nb_pkts; i++) {
         struct udp_hdr *udp;
@@ -213,7 +209,6 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
     }
 
     aho_packet_handler(aho_pkts, nb_pkts);
-
     return 0;
 }
 
@@ -334,6 +329,7 @@ main(int argc, char *argv[]) {
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
         nf_function_table->pkt_bulk_handler = &packet_bulk_handler_with_scaling;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
