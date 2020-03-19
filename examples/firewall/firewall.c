@@ -72,6 +72,8 @@
 #define NUM_TBLS 8
 
 static uint16_t destination;
+static uint16_t num_children = 0;
+static uint16_t use_shared_core_allocation = 0;
 static int debug = 0;
 char *rule_file = NULL;
 
@@ -111,6 +113,7 @@ usage(const char *progname) {
         printf("Flags:\n");
         printf(" - `-d DST`: Destination Service ID to forward to\n");
         printf(" - `-p PRINT_DELAY`: Number of packets between each print, e.g. `-p 1` prints every packets.\n");
+        printf(" - `-n NUM_CHILDREN`: Sets the number of children for the NF to spawn\n");
         printf(" - `-b`: Debug mode: Print each incoming packets source/destination"
                " IP address as well as its drop/forward status\n");
         printf(" - `-f`: Path to a JSON file containing firewall rules; See README for example usage\n");
@@ -123,7 +126,7 @@ static int
 parse_app_args(int argc, char *argv[], const char *progname) {
         int c, dst_flag = 0, rules_init = 0;
 
-        while ((c = getopt(argc, argv, "d:f:p:b")) != -1) {
+        while ((c = getopt(argc, argv, "d:n:f:p:b")) != -1) {
                 switch (c) {
                         case 'd':
                                 destination = strtoul(optarg, NULL, 10);
@@ -132,6 +135,9 @@ parse_app_args(int argc, char *argv[], const char *progname) {
                         case 'p':
                                 print_delay = strtoul(optarg, NULL, 10);
                                 RTE_LOG(INFO, APP, "Print delay = %d\n", print_delay);
+                                break;
+                        case 'n':
+                                num_children = strtoul(optarg, NULL, 10);
                                 break;
                         case 'f':
                                 rule_file = strdup(optarg);
@@ -364,6 +370,34 @@ fpp_end:
 
 }
 
+static int
+packet_bulk_handler_opt_with_scaling(struct rte_mbuf **pkts, uint16_t nb_pkts,
+               __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+        static uint32_t spawned_nfs = 0;
+
+        /* Spawn children until we hit the set number */
+        while (spawned_nfs < num_children) {
+                struct onvm_nf_scale_info *scale_info = onvm_nflib_get_empty_scaling_config(nf_local_ctx->nf);
+                /* Sets service id of child */
+                scale_info->nf_init_cfg->service_id = nf_local_ctx->nf->service_id;
+                scale_info->function_table = onvm_nflib_init_nf_function_table();
+                /* Custom packet handler */
+                scale_info->function_table->pkt_handler = &packet_handler;
+                scale_info->function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
+                if (use_shared_core_allocation)
+                        scale_info->nf_init_cfg->init_options = ONVM_SET_BIT(0, SHARE_CORE_BIT);
+
+                /* Spawn the child */
+                if (onvm_nflib_scale(scale_info) == 0)
+                        RTE_LOG(INFO, APP, "Spawning child SID %u; with packet_handler_fwd packet function\n",
+                                scale_info->nf_init_cfg->service_id);
+                else
+                        rte_exit(EXIT_FAILURE, "Can't spawn child\n");
+                spawned_nfs++;
+        }
+
+        return packet_bulk_handler_opt(pkts, nb_pkts, nf_local_ctx);
+}
 
 static int
 lpm_setup(struct onvm_fw_rule **rules, int num_rules) {
@@ -492,7 +526,8 @@ int main(int argc, char *argv[]) {
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
         // nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
-        nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
+        // nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt_with_scaling;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
