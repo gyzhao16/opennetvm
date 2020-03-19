@@ -163,7 +163,7 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
     static uint32_t func_counter = 0;
     func_counter ++;
     if (func_counter >= 10) {
-        printf("%d\n", func_counter);
+        // printf("%d\n", func_counter);
         func_counter = 0;
     }
     int i = 0;

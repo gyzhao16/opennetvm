@@ -9,6 +9,8 @@
 #include "aho.h"
 #include "util.h"
 #include "fpp.h"
+//add header file
+#include "noopt.h"
 
 #define DEBUG 0
 
@@ -22,7 +24,7 @@ struct mp_list_t {
 };
 
 /* Plain old API-call batching */
-void process_batch(const struct aho_dfa *dfa_arr,
+static void process_batch(const struct aho_dfa *dfa_arr,
 	const struct aho_pkt *pkts, struct mp_list_t *mp_list)
 {
 	int I, j;
@@ -52,12 +54,12 @@ void process_batch(const struct aho_dfa *dfa_arr,
 	}
 }
 
-void *ids_func(void *ptr)
+static void ids_func(void *ptr)
 {
 	int i, j;
 
 	struct aho_ctrl_blk *cb = (struct aho_ctrl_blk *) ptr;
-	int id = cb->tid;
+	// int id = cb->tid;
 	struct aho_dfa *dfa_arr = cb->dfa_arr;
 	struct aho_pkt *pkts = cb->pkts;
 	int num_pkts = cb->num_pkts;
@@ -76,9 +78,9 @@ void *ids_func(void *ptr)
 	int tot_success = 0;	/* Packets that matched a DFA state */ 
 	int tot_bytes = 0;		/* Total bytes matched through DFAs */
 
-	while(1) {
-		struct timespec start, end;
-		clock_gettime(CLOCK_REALTIME, &start);
+	// while(1) {
+		// struct timespec start, end;
+		// clock_gettime(CLOCK_REALTIME, &start);
 
 		for(i = 0; i < num_pkts; i += BATCH_SIZE) {
 			process_batch(dfa_arr, &pkts[i], mp_list);
@@ -114,87 +116,103 @@ void *ids_func(void *ptr)
 			}
 		}
 
-		clock_gettime(CLOCK_REALTIME, &end);
+		// clock_gettime(CLOCK_REALTIME, &end);
 
-		double ns = (end.tv_sec - start.tv_sec) * 1000000000 +
-			(double) (end.tv_nsec - start.tv_nsec);
-		red_printf("ID %d: Rate = %.2f Gbps. tot_success = %d\n", id,
-			((double) tot_bytes * 8) / ns, tot_success);
-		red_printf("num_pkts = %d, tot_proc = %d | matched_pat_sum = %d\n",
-			num_pkts, tot_proc, matched_pat_sum);
+		// double ns = (end.tv_sec - start.tv_sec) * 1000000000 +
+		// 	(double) (end.tv_nsec - start.tv_nsec);
+		// red_printf("ID %d: Rate = %.2f Gbps. tot_success = %d\n", id,
+		// 	((double) tot_bytes * 8) / ns, tot_success);
+		// red_printf("num_pkts = %d, tot_proc = %d | matched_pat_sum = %d\n",
+		// 	num_pkts, tot_proc, matched_pat_sum);
 
 		matched_pat_sum = 0;	/* Sum of all matched pattern IDs */
 		tot_success = 0;
 		tot_bytes = 0;
 		tot_proc = 0;
 
-		#if DEBUG == 1		/* Print matched states only once */
-		exit(0);
-		#endif
-	}
+	// 	#if DEBUG == 1		 Print matched states only once 
+	// 	exit(0);
+	// 	#endif
+	// }
 }
 
-int main(int argc, char *argv[])
+int aho_packet_handler(/*int argc, char *argv[]*/struct aho_pkt *pkts, uint16_t num_pkts)
 {
-	assert(argc == 2);
+	//assert(argc == 2);
+	static int dfa_init_flag = 0;
 
-	int num_threads = atoi(argv[1]);
+	//int num_threads = atoi(argv[1]);
+	int num_threads = 1;
 	assert(num_threads >= 1 && num_threads <= AHO_MAX_THREADS);
 
-	int num_patterns, num_pkts, i;
+	//int num_patterns, num_pkts, i;
+	static int num_patterns;
+	int i = 0;
 
-	struct aho_pattern *patterns;
-	struct aho_pkt *pkts;
-	struct aho_dfa dfa_arr[AHO_MAX_DFA];
+	static struct aho_pattern *patterns;
+	//struct aho_pkt *pkts;
+	static struct aho_dfa dfa_arr[AHO_MAX_DFA];
 
 	/* Thread structures */
-	pthread_t worker_threads[AHO_MAX_THREADS];
-	struct aho_ctrl_blk worker_cb[AHO_MAX_THREADS];
+	//pthread_t worker_threads[AHO_MAX_THREADS];
+	//struct aho_ctrl_blk worker_cb[AHO_MAX_THREADS];
 
-	red_printf("State size = %lu\n", sizeof(struct aho_state));
+	//red_printf("State size = %lu\n", sizeof(struct aho_state));
 
+	struct aho_ctrl_blk worker_cb;
 	/* Initialize the shared DFAs */
-	for(i = 0; i < AHO_MAX_DFA; i++) {
-		printf("Initializing DFA %d\n", i);
-		aho_init(&dfa_arr[i], i);
+
+	if (dfa_init_flag == 0) {
+		dfa_init_flag ++;
+
+		for(i = 0; i < AHO_MAX_DFA; i++) {
+			printf("Initializing DFA %d\n", i);
+			aho_init(&dfa_arr[i], i);
+		}
+
+		red_printf("Adding patterns to DFAs\n");
+		patterns = aho_get_patterns(AHO_PATTERN_FILE,
+			&num_patterns);
+
+		for(i = 0; i < num_patterns; i++) {
+			int dfa_id = patterns[i].dfa_id;
+			aho_add_pattern(&dfa_arr[dfa_id], &patterns[i], i);
+		}
+
+		red_printf("Building AC failure function\n");
+		for(i = 0; i < AHO_MAX_DFA; i++) {
+			aho_build_ff(&dfa_arr[i]);
+			aho_preprocess_dfa(&dfa_arr[i]);
+		}
 	}
-
-	red_printf("Adding patterns to DFAs\n");
-	patterns = aho_get_patterns(AHO_PATTERN_FILE,
-		&num_patterns);
-
-	for(i = 0; i < num_patterns; i++) {
-		int dfa_id = patterns[i].dfa_id;
-		aho_add_pattern(&dfa_arr[dfa_id], &patterns[i], i);
-	}
-
-	red_printf("Building AC failure function\n");
-	for(i = 0; i < AHO_MAX_DFA; i++) {
-		aho_build_ff(&dfa_arr[i]);
-		aho_preprocess_dfa(&dfa_arr[i]);
-	}
-
-	red_printf("Reading packets from file\n");
-	pkts = aho_get_pkts(AHO_PACKET_FILE, &num_pkts);
 	
-	for(i = 0; i < num_threads; i++) {
-		worker_cb[i].tid = i;
-		worker_cb[i].dfa_arr = dfa_arr;
-		worker_cb[i].pkts = pkts;
-		worker_cb[i].num_pkts = num_pkts;
+	//red_printf("Reading packets from file\n");
+	//pkts = aho_get_pkts(AHO_PACKET_FILE, &num_pkts);
+	
+	// for(i = 0; i < num_threads; i++) {
+	// 	worker_cb[i].tid = i;
+	// 	worker_cb[i].dfa_arr = dfa_arr;
+	// 	worker_cb[i].pkts = pkts;
+	// 	worker_cb[i].num_pkts = num_pkts;
 
-		pthread_create(&worker_threads[i], NULL, ids_func, &worker_cb[i]);
+	// 	pthread_create(&worker_threads[i], NULL, ids_func, &worker_cb[i]);
 
-		/* Ensure that threads don't use the same packets close in time */
-		sleep(1);
-	}
+	// 	/* Ensure that threads don't use the same packets close in time */
+	// 	sleep(1);
+	// }
 
-	for(i = 0; i < num_threads; i++) {
-		pthread_join(worker_threads[i], NULL);
-	}
+	// for(i = 0; i < num_threads; i++) {
+	// 	pthread_join(worker_threads[i], NULL);
+	// }
 
-	/* The work never ends */
-	assert(0);
+	// /* The work never ends */
+	// assert(0);
+
+	worker_cb.tid = 0;
+	worker_cb.dfa_arr = dfa_arr;
+	worker_cb.pkts = pkts;
+	worker_cb.num_pkts = num_pkts;
+	ids_func(&worker_cb);
 
 	return 0;
 }
