@@ -150,7 +150,7 @@ static void ids_func(void *ptr)
 
 	/* Big batch variables */
 	int bb_i = 0;
-	struct aho_pkt *bbatch = malloc(BIG_BATCH_SIZE * sizeof(struct aho_pkt));
+	struct aho_pkt bbatch[BIG_BATCH_SIZE];//  =   malloc(BIG_BATCH_SIZE * sizeof(struct aho_pkt));
 	memset(bbatch, 0, BIG_BATCH_SIZE * sizeof(struct aho_pkt));
 
 	/* Per-batch matched patterns */
@@ -254,8 +254,6 @@ static void ids_func(void *ptr)
 		tot_success = 0;
 		tot_bytes = 0;
 		tot_proc = 0;
-
-		free(bbatch);
 }
 
 // static void ids_func(void *ptr)
