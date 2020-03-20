@@ -54,6 +54,7 @@
 #include <rte_ip.h>
 #include <rte_malloc.h>
 #include <rte_mbuf.h>
+#include <rte_lpm.h>
 
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
@@ -221,6 +222,55 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
         return 0;
 }
 
+static int
+packet_bulk_handler_opt(struct rte_mbuf **pkts, uint16_t nb_pkts,
+               __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+	static uint32_t counter;
+	struct ipv4_hdr *ip[MAX_BATCH_SIZE];
+        uint32_t hash[BATCH_SIZE];
+	uint16_t res[MAX_BATCH_SIZE];
+	struct onvm_pkt_meta *meta[MAX_BATCH_SIZE];
+
+	int I = 0;			// batch index
+	void *batch_rips[MAX_BATCH_SIZE];		// goto targets
+	int iMask = 0;		// No packet is done yet
+
+	int temp_index;
+	for(temp_index = 0; temp_index < MAX_BATCH_SIZE; temp_index ++) {
+		batch_rips[temp_index] = &&fpp_start;
+	}
+	counter = 0;
+        counter += nb_pkts;
+
+        if (counter == print_delay) {
+                do_stats_display(pkts[0]);
+                counter = 0;
+        }
+
+fpp_start:
+        FPP_PSS(pkts[I], fpp_label_1, nb_pkts);
+fpp_label_1:
+        ip[I] = onvm_pkt_ipv4_hdr(pkts[I]);
+        meta[I] = onvm_get_pkt_meta(pkts[I]);
+        hash[I] = (ip[I]->dst_addr) >> 8;
+        RTE_ASSERT(ip[I] != NULL);
+        FPP_PSS(&tbl24[hash[I]], fpp_label_2, nb_pkts);
+fpp_label_2:
+        res[I] = tbl24[hash[I]];
+        (void) res[I];
+
+        meta[I]->destination = destination;
+        meta[I]->action = ONVM_NF_ACTION_TONF;
+fpp_end:
+	batch_rips[I] = &&fpp_end;
+	iMask = FPP_SET(iMask, I);
+	if(iMask == (nb_pkts < MAX_BATCH_SIZE ? (1 << nb_pkts) - 1 : -1)) {
+		return 0;
+	}
+	I = (I + 1) < nb_pkts ? I + 1 : 0;
+	goto *batch_rips[I];
+}
+
 int
 main(int argc, char *argv[]) {
         int arg_offset;
@@ -234,6 +284,8 @@ main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
+        RTE_SET_USED(packet_bulk_handler);
+        RTE_SET_USED(packet_bulk_handler_opt);
         nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
 
         // initiate table
