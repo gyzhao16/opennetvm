@@ -77,6 +77,8 @@ static uint32_t print_delay = 1000000;
 /* alloc a simple tbl24 for routing */
 static uint16_t tbl24[1 << 24];
 int destination;
+static uint16_t num_children = 0;
+static uint16_t use_shared_core_allocation = 0;
 
 /*
  * Print a usage message
@@ -88,6 +90,7 @@ usage(const char *progname) {
         printf("%s -F <CONFIG_FILE.json> [EAL args] -- [NF_LIB args] -- [NF args]\n\n", progname);
         printf("Flags:\n");
         printf(" - `-d DST`: Destination Service ID to forward to\n");
+        printf(" - `-n NUM_CHILDREN`: Sets the number of children for the NF to spawn\n");
         // printf(" - `-f <router_cfg>`: router configuration, has a list of (IPs, dest) tuples \n");
         printf(" - `-p <print_delay>`: number of packets between each print, e.g. `-p 1` prints every packets.\n");
 }
@@ -99,7 +102,7 @@ static int
 parse_app_args(int argc, char *argv[], const char *progname) {
         int c = 0;
 
-        while ((c = getopt(argc, argv, "d:p:")) != -1) {
+        while ((c = getopt(argc, argv, "d:n:p:")) != -1) {
                 switch (c) {
                         case 'd':
                                 destination = strtoul(optarg, NULL, 10);
@@ -107,6 +110,9 @@ parse_app_args(int argc, char *argv[], const char *progname) {
                         // case 'f':
                         //         cfg_filename = strdup(optarg);
                         //         break;
+                        case 'n':
+                                num_children = strtoul(optarg, NULL, 10);
+                                break;
                         case 'p':
                                 print_delay = strtoul(optarg, NULL, 10);
                                 break;
@@ -271,6 +277,35 @@ fpp_end:
 	goto *batch_rips[I];
 }
 
+static int
+packet_bulk_handler_opt_with_scaling(struct rte_mbuf **pkts, uint16_t nb_pkts,
+               __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+        static uint32_t spawned_nfs = 0;
+
+        /* Spawn children until we hit the set number */
+        while (spawned_nfs < num_children) {
+                struct onvm_nf_scale_info *scale_info = onvm_nflib_get_empty_scaling_config(nf_local_ctx->nf);
+                /* Sets service id of child */
+                scale_info->nf_init_cfg->service_id = nf_local_ctx->nf->service_id;
+                scale_info->function_table = onvm_nflib_init_nf_function_table();
+                /* Custom packet handler */
+                scale_info->function_table->pkt_handler = &packet_handler;
+                scale_info->function_table->pkt_bulk_handler = &packet_bulk_handler_opt;
+                if (use_shared_core_allocation)
+                        scale_info->nf_init_cfg->init_options = ONVM_SET_BIT(0, SHARE_CORE_BIT);
+
+                /* Spawn the child */
+                if (onvm_nflib_scale(scale_info) == 0)
+                        RTE_LOG(INFO, APP, "Spawning child SID %u; with packet_handler_fwd packet function\n",
+                                scale_info->nf_init_cfg->service_id);
+                else
+                        rte_exit(EXIT_FAILURE, "Can't spawn child\n");
+                spawned_nfs++;
+        }
+
+        return packet_bulk_handler_opt(pkts, nb_pkts, nf_local_ctx);
+}
+
 int
 main(int argc, char *argv[]) {
         int arg_offset;
@@ -286,7 +321,7 @@ main(int argc, char *argv[]) {
         nf_function_table->pkt_handler = &packet_handler;
         RTE_SET_USED(packet_bulk_handler);
         RTE_SET_USED(packet_bulk_handler_opt);
-        nf_function_table->pkt_bulk_handler = &packet_bulk_handler;
+        nf_function_table->pkt_bulk_handler = &packet_bulk_handler_opt_with_scaling;
 
         // initiate table
         for (i = 0; i < (1 << 24); i++) {
