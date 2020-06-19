@@ -47,7 +47,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = firewall
 
 # all source are stored in SRCS-y
-SRCS-y := firewall.c firewall_rules.c firewall_process.c
+SRCS-y := firewall.c firewall_rules.c firewall_process.c pstack.c
 
 # OpenNetVM path
 ONVM= $(SRCDIR)/../../onvm
@@ -58,5 +58,8 @@ CFLAGS += -I$(ONVM)/onvm_nflib
 CFLAGS += -I$(ONVM)/lib
 LDFLAGS += $(ONVM)/onvm_nflib/$(RTE_TARGET)/libonvm.a
 LDFLAGS += $(ONVM)/lib/$(RTE_TARGET)/lib/libonvmhelper.a -lm
+
+CFLAGS += -I$(ONVM)/pstack/src -DPARALLEL -DORIGIN_TCP
+LDFLAGS += -L$(ONVM)/pstack/src -lnids
 
 include $(RTE_SDK)/mk/rte.extapp.mk

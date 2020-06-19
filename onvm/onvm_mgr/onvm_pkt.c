@@ -51,10 +51,15 @@
 #include "onvm_nf.h"
 #include "onvm_pkt.h"
 
+#include "pstack.h"
+
+// #define ENABLE_PSTACK
+// extern struct pstack_thread_info pstack_info;
+
 /**********************************Interfaces*********************************/
 
 void
-onvm_pkt_process_rx_batch(struct queue_mgr *rx_mgr, struct rte_mbuf *pkts[], uint16_t rx_count) {
+onvm_pkt_process_rx_batch(struct queue_mgr *rx_mgr, struct rte_mbuf *pkts[], uint16_t rx_count, uint16_t rx_queue_id) {
         uint16_t i;
         struct onvm_pkt_meta *meta;
 #ifdef FLOW_LOOKUP
@@ -67,6 +72,10 @@ onvm_pkt_process_rx_batch(struct queue_mgr *rx_mgr, struct rte_mbuf *pkts[], uin
                 return;
 
         for (i = 0; i < rx_count; i++) {
+                RTE_SET_USED(rx_queue_id);
+#ifdef ENABLE_PSTACK
+                pstack_process((char *)onvm_pkt_ipv4_hdr(pkts[i]), pkts[i]->data_len - sizeof(struct ether_hdr), rx_queue_id);
+#endif
                 meta = (struct onvm_pkt_meta *)&(((struct rte_mbuf *)pkts[i])->udata64);
                 meta->src = 0;
                 meta->chain_index = 0;

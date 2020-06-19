@@ -186,13 +186,14 @@ static int encrypt_pkt(struct rte_mbuf *pkt) {
         uint16_t plen;
         uint16_t hlen;
         struct ipv4_hdr *ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
-        if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
-                struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
-                pkt_data = ((uint8_t *)tcp) + sizeof(struct tcp_hdr);
-        } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
-                struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
-                pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
-        }
+        // if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
+        //         struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
+        //         pkt_data = ((uint8_t *)tcp) + sizeof(struct tcp_hdr);
+        // } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
+        //         struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
+        //         pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
+        // }
+        pkt_data = (uint8_t *)ipv4_hdr + sizeof(struct ipv4_hdr);
 
         /* Check if we have a valid UDP packet */
         if (pkt_data != NULL) {
@@ -204,7 +205,7 @@ static int encrypt_pkt(struct rte_mbuf *pkt) {
                 /* Encrypt. */
                 /* IV should change with every packet, but we don't have any
                  * way to send it to the other side. */
-                aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 128, iv[0]);
+                // aes_encrypt_ctr(pkt_data, plen, pkt_data, key_schedule, 128, iv[0]);
                 hmac_sha1(key[0], 32, pkt_data, plen, hmac_out, &hmac_len);
                 return plen;
         } else {
@@ -274,8 +275,12 @@ packet_bulk_handler(struct rte_mbuf **pkt, uint16_t nb_pkts,
                 if (counter == 0) {
                         printf("Encrypted %d bytes\n", res);
                 }
-                meta->action = ONVM_NF_ACTION_TONF;
                 meta->destination = destination;
+                if (destination == 0) {
+                        meta->action = ONVM_NF_ACTION_OUT;
+                } else {
+                        meta->action = ONVM_NF_ACTION_TONF;
+                }
         }
         return 0;
 }
@@ -309,8 +314,12 @@ fpp_label_1:
         if (counter == 0) {
                 printf("Encrypted %d bytes\n", res[I]);
         }
-        meta[I]->action = ONVM_NF_ACTION_TONF;
         meta[I]->destination = destination;
+        if (destination == 0) {
+                meta[I]->action = ONVM_NF_ACTION_OUT;
+        } else {
+                meta[I]->action = ONVM_NF_ACTION_TONF;
+        }
 fpp_end:
 	batch_rips[I] = &&fpp_end;
 	iMask = FPP_SET(iMask, I); 
@@ -348,6 +357,7 @@ packet_bulk_handler_opt_with_scaling(struct rte_mbuf **pkts, uint16_t nb_pkts,
         }
 
         return packet_bulk_handler_opt(pkts, nb_pkts, nf_local_ctx);
+        // return packet_bulk_handler(pkts, nb_pkts, nf_local_ctx);
 }
 
 int

@@ -52,6 +52,7 @@
 #include <rte_common.h>
 #include <rte_ip.h>
 #include <rte_mbuf.h>
+#include <rte_malloc.h>
 
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
@@ -61,6 +62,7 @@
 #include "util.h"
 #include "fpp.h"
 #include "handopt.h"
+#include "pstack.h"
 
 #define NF_TAG "nids"
 
@@ -172,6 +174,7 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
 
     int i = 0;
     struct onvm_pkt_meta *meta;
+    uint8_t *pkt_data = NULL;
     // printf("this is bulk function\n");
     counter += nb_pkts;
     if (counter >= 10000000) {
@@ -182,16 +185,19 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
     RTE_ASSERT(nb_pkts <= MAX_BATCH_SIZE);
     
     for (i = 0; i < nb_pkts; i++) {
-        struct udp_hdr *udp;
-        udp = onvm_pkt_udp_hdr(pkts[i]);
-        if (udp != NULL) {
-            uint8_t *pkt_data;
+        struct ipv4_hdr* ipv4_hdr = onvm_pkt_ipv4_hdr(pkts[i]);
+        if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
+                struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkts[i]);
+                pkt_data = ((uint8_t *)tcp) + sizeof(struct tcp_hdr);
+        } else if (ipv4_hdr->next_proto_id == IPPROTO_UDP) {
+                struct udp_hdr *udp = onvm_pkt_udp_hdr(pkts[i]);
+                pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
+        }
+        if (pkt_data != NULL) {
             uint8_t *eth;
             uint16_t plen;
             uint16_t hlen;
 
-            //get at the payload
-            pkt_data = ((uint8_t *)udp) + sizeof(struct udp_hdr);
             //calculate length
             eth = rte_pktmbuf_mtod(pkts[i], uint8_t *);
             hlen = pkt_data - eth;
@@ -313,6 +319,18 @@ packet_bulk_handler_with_scaling(struct rte_mbuf **pkts, uint16_t nb_pkts,
         return packet_bulk_handler(pkts, nb_pkts, nf_local_ctx);
 }
 
+static struct pstack_thread_info pstack_info; 
+
+static void init_pstack(void) {
+        pstack_info.ip_thread_local = (IP_THREAD_LOCAL_P) rte_malloc(PSTACK_IP_INFO_NAME, 10 * PSTACK_IP_INFO_SIZE, 0);
+	pstack_info.tcp_thread_local = (TCP_THREAD_LOCAL_P) rte_malloc(PSTACK_TCP_INFO_NAME, 10 * PSTACK_TCP_INFO_SIZE, 0);
+        // RTE_ASSERT(pstack_info.ip_thread_local != NULL && pstack_info.tcp_thread_local != NULL);
+        // pstack_info.ip_thread_local = malloc((MAX_CPU_CORES - 1) * PSTACK_IP_INFO_SIZE);
+	// pstack_info.tcp_thread_local = malloc((MAX_CPU_CORES - 1) * PSTACK_TCP_INFO_SIZE);
+
+	pstack_init(pstack_info, 9);
+}
+
 int
 main(int argc, char *argv[]) {
     
@@ -343,6 +361,9 @@ main(int argc, char *argv[]) {
 
         argc -= arg_offset;
         argv += arg_offset;
+
+        RTE_SET_USED(init_pstack);
+        // init_pstack();
 
         if (parse_app_args(argc, argv, progname) < 0) {
                 onvm_nflib_stop(nf_local_ctx);

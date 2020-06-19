@@ -65,6 +65,7 @@ uint16_t **services;
 uint16_t *nf_per_service_count;
 struct onvm_service_chain *default_chain;
 struct onvm_service_chain **default_sc_p;
+// struct pstack_thread_info pstack_info;
 
 /*************************Internal Functions Prototypes***********************/
 
@@ -94,6 +95,9 @@ init_info_queue(void);
 
 static void
 check_all_ports_link_status(uint8_t port_num, uint32_t port_mask);
+
+static int
+init_pstack_info_pool(void);
 
 /*****************Internal Configuration Structs and Constants*****************/
 
@@ -250,6 +254,10 @@ init(int argc, char *argv[]) {
         /* initialise the shared memory for shared core mode */
         init_shared_sem();
 
+        /* initialise the pstack info */
+        RTE_SET_USED(init_pstack_info_pool);
+        // init_pstack_info_pool();
+
         /*initialize a default service chain*/
         default_chain = onvm_sc_create();
         retval = onvm_sc_append_entry(default_chain, ONVM_NF_ACTION_TONF, 1);
@@ -325,6 +333,31 @@ init_nf_init_cfg_pool(void) {
                                           rte_socket_id(), NO_FLAGS);
 
         return (nf_init_cfg_pool == NULL); /* 0 on success */
+}
+
+/**
+ * Set up the mempool of the common tcp/ip stack (pstack)
+ */
+
+static int
+init_pstack_info_pool(void) {
+	// pstack_info.ip_thread_local = rte_mempool_create(MZ_PSTACK_IP_INFO_NAME, ONVM_NUM_RX_THREADS,
+	// 		MZ_PSTACK_IP_INFO_SIZE, NF_INFO_CACHE, // TODO cache size?
+	// 		0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
+	// pstack_info.tcp_thread_local = rte_mempool_create(MZ_PSTACK_TCP_INFO_NAME, ONVM_NUM_RX_THREADS,
+	// 		MZ_PSTACK_TCP_INFO_SIZE, NF_INFO_CACHE, // TODO cache size?
+	// 		0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
+
+	// USE RTE_MALLOC for now 
+	// The pstack library use dynamic memory allocation
+	// shared memory requires rte_mempool
+	// pstack_info.ip_thread_local = rte_malloc(PSTACK_IP_INFO_NAME, ONVM_NUM_RX_THREADS * PSTACK_IP_INFO_SIZE, 0);
+	// pstack_info.tcp_thread_local = rte_malloc(PSTACK_TCP_INFO_NAME, ONVM_NUM_RX_THREADS * PSTACK_TCP_INFO_SIZE, 0);
+
+	// pstack_init(pstack_info, ONVM_NUM_RX_THREADS);
+
+	// return (pstack_info.ip_thread_local == NULL || pstack_info.tcp_thread_local == NULL); 
+        return 0;
 }
 
 /**

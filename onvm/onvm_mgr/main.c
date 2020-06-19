@@ -200,7 +200,7 @@ rx_thread_main(void *arg) {
                                 if (!num_nfs) {
                                         onvm_pkt_drop_batch(pkts, rx_count);
                                 } else {
-                                        onvm_pkt_process_rx_batch(rx_mgr, pkts, rx_count);
+                                        onvm_pkt_process_rx_batch(rx_mgr, pkts, rx_count, rx_mgr->id);
                                 }
                         }
                 }

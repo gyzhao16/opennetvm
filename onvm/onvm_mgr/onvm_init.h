@@ -75,6 +75,8 @@
 #include "onvm_sc_mgr.h"
 #include "onvm_threading.h"
 
+#include "pstack.h"
+
 /***********************************Macros************************************/
 
 #define MBUF_CACHE_SIZE 512
@@ -93,7 +95,7 @@
 
 #define NO_FLAGS 0
 
-#define ONVM_NUM_RX_THREADS 1
+#define ONVM_NUM_RX_THREADS 1 // TODO: change RX threads
 /* Number of auxiliary threads in manager, 1 reserved for stats */
 #define ONVM_NUM_MGR_AUX_THREADS 1
 #define ONVM_NUM_WAKEUP_THREADS 1  // Enabled when using shared core mode
@@ -129,6 +131,8 @@ extern uint8_t ONVM_NF_SHARE_CORES;
 
 /* For handling shared core logic */
 extern struct nf_wakeup_info *nf_wakeup_infos;
+
+// extern struct pstack_thread_info pstack_info;
 
 /**********************************Functions**********************************/
 

@@ -5,6 +5,7 @@
 #include<unistd.h>
 #include<sys/ipc.h>
 #include<sys/shm.h>
+#include <errno.h>
 
 #include "aho.h"
 #include "util.h"
@@ -28,7 +29,7 @@ void aho_init(struct aho_dfa *dfa, int id)
 		IPC_CREAT | 0666 | SHM_HUGETLB);
 
 	if(sid < 0) {
-		printf("\tCould not allocate states for DFA %d\n", id);
+		printf("\tCould not allocate states for DFA %d, error %s\n", id, strerror(errno));
 		exit(-1);
 	}
 

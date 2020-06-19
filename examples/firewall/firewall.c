@@ -65,6 +65,7 @@
 #include "onvm_config_common.h"
 
 #include "construct_rules.h"
+#include "pstack.h"
 
 #define NF_TAG "firewall"
 
@@ -340,6 +341,7 @@ packet_bulk_handler_opt(struct rte_mbuf **pkts, uint16_t nb_pkts,
 fpp_start:
         FPP_PSS(pkts[I], fpp_label_1, nb_pkts);
 fpp_label_1:
+        pstack_process((char *)onvm_pkt_ipv4_hdr(pkts[I]), pkts[I]->data_len - sizeof(struct ether_hdr), nf_local_ctx->nf->instance_id);
         ret[I] = firewall_check(pkts[I]);
         meta[I] = onvm_get_pkt_meta((struct rte_mbuf *)pkts[I]);
         if (ret[I] < 0) {
@@ -510,6 +512,18 @@ struct onvm_fw_rule
         return rules;
 }
 
+static struct pstack_thread_info pstack_info; 
+
+static void init_pstack(void) {
+        pstack_info.ip_thread_local = (IP_THREAD_LOCAL_P) rte_malloc(PSTACK_IP_INFO_NAME, 10 * PSTACK_IP_INFO_SIZE, 0);
+	pstack_info.tcp_thread_local = (TCP_THREAD_LOCAL_P) rte_malloc(PSTACK_TCP_INFO_NAME, 10 * PSTACK_TCP_INFO_SIZE, 0);
+        // RTE_ASSERT(pstack_info.ip_thread_local != NULL && pstack_info.tcp_thread_local != NULL);
+        // pstack_info.ip_thread_local = malloc((MAX_CPU_CORES - 1) * PSTACK_IP_INFO_SIZE);
+	// pstack_info.tcp_thread_local = malloc((MAX_CPU_CORES - 1) * PSTACK_TCP_INFO_SIZE);
+
+	pstack_init(pstack_info, 10);
+}
+
 int main(int argc, char *argv[]) {
         struct onvm_nf_local_ctx *nf_local_ctx;
         struct onvm_nf_function_table *nf_function_table;
@@ -541,6 +555,8 @@ int main(int argc, char *argv[]) {
 
         argc -= arg_offset;
         argv += arg_offset;
+
+        init_pstack();
 
         if (parse_app_args(argc, argv, progname) < 0) {
                 onvm_nflib_stop(nf_local_ctx);

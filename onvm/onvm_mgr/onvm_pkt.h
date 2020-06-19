@@ -62,7 +62,7 @@
  *
  */
 void
-onvm_pkt_process_rx_batch(struct queue_mgr *rx_mgr, struct rte_mbuf *pkts[], uint16_t rx_count);
+onvm_pkt_process_rx_batch(struct queue_mgr *rx_mgr, struct rte_mbuf *pkts[], uint16_t rx_count, uint16_t rx_queue_id);
 
 /*
  * Interface to send packets to all ports after processing them.

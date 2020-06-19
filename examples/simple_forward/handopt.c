@@ -13,7 +13,7 @@
 //add header file
 #include "handopt.h"
 
-#define BIG_BATCH_SIZE (8 * 1024)
+#define BIG_BATCH_SIZE (32)
 #define DEBUG 0
 
 /* Maximum number of patterns a packet can match during its DFA traversal */

@@ -223,7 +223,11 @@ packet_bulk_handler(struct rte_mbuf **pkts, uint16_t nb_pkts,
                 (void) res;
 
                 meta->destination = destination;
-                meta->action = ONVM_NF_ACTION_TONF;
+                if (destination == 0) {
+                        meta->action = ONVM_NF_ACTION_OUT;
+                } else {
+                        meta->action = ONVM_NF_ACTION_TONF;
+                }
         }
         return 0;
 }
@@ -266,7 +270,11 @@ fpp_label_2:
         (void) res[I];
 
         meta[I]->destination = destination;
-        meta[I]->action = ONVM_NF_ACTION_TONF;
+        if (destination == 0) {
+                meta[I]->action = ONVM_NF_ACTION_OUT;
+        } else {
+                meta[I]->action = ONVM_NF_ACTION_TONF;
+        }
 fpp_end:
 	batch_rips[I] = &&fpp_end;
 	iMask = FPP_SET(iMask, I);

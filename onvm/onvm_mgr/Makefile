@@ -56,14 +56,17 @@ endif
 APP = onvm_mgr
 
 # all source are stored in SRCS-y
-SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_pkt.c onvm_nf.c
+SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_pkt.c onvm_nf.c  pstack.c
 
-INC := onvm_mgr.h onvm_init.h onvm_args.h onvm_stats.h onvm_nf.h onvm_pkt.h
+INC := onvm_mgr.h onvm_init.h onvm_args.h onvm_stats.h onvm_nf.h onvm_pkt.h pstack.h
 
 CFLAGS += $(WERROR_FLAGS) -O3 $(USER_FLAGS)
 CFLAGS += -I$(SRCDIR)/../ -I$(SRCDIR)/../onvm_nflib/ -I$(SRCDIR)/../lib/
 LDFLAGS += $(SRCDIR)/../lib/$(RTE_TARGET)/libonvmhelper.a
 LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/libonvm.a
+
+CFLAGS += -I$(SRCDIR)/../pstack/src -DPARALLEL -DORIGIN_TCP
+LDFLAGS += -L$(SRCDIR)/../pstack/src -lnids
 
 ifeq ($(ENABLE_FLOW_LOOKUP), 1)
 CFLAGS +=-D FLOW_LOOKUP

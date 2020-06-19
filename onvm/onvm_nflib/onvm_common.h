@@ -383,6 +383,8 @@ struct lpm_request {
 #define _NF_MSG_QUEUE_NAME "NF_%u_MSG_QUEUE"
 #define _NF_MEMPOOL_NAME "NF_INFO_MEMPOOL"
 #define _NF_MSG_POOL_NAME "NF_MSG_MEMPOOL"
+#define PSTACK_IP_INFO_NAME "MProc_pstack_ip_info"
+#define PSTACK_TCP_INFO_NAME "MProc_pstack_tcp_info"
 
 /* interrupt semaphore specific updates */
 #define SHMSZ 4                         // size of shared memory segement (page_size)
